@@ -1,0 +1,146 @@
+```
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Rapport Technique - Mises a jour NEMESIS CLI</title>
+<style>
+body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 20px; color: #1a1a1a; line-height: 1.6; }
+h1 { color: #0066cc; border-bottom: 3px solid #0066cc; padding-bottom: 10px; }
+h2 { color: #0099ff; margin-top: 30px; border-bottom: 2px solid #0099ff; padding-bottom: 5px; }
+h3 { color: #333; margin-top: 20px; }
+.code { background: #f4f4f4; padding: 10px; border-left: 4px solid #0066cc; font-family: monospace; font-size: 13px; white-space: pre-wrap; }
+table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+th { background: #0066cc; color: white; }
+.succes { color: green; font-weight: bold; }
+.ko { color: red; }
+ul { margin-left: 20px; }
+.footer { margin-top: 40px; border-top: 1px solid #ccc; padding-top: 10px; font-size: 12px; color: #666; text-align: center; }
+</style>
+</head>
+<body>
+
+<h1>Rapport Technique - Mises a jour NEMESIS CLI</h1>
+<p><strong>Date :</strong> 27 avril 2026</p>
+<p><strong>Projet :</strong> /home/nemesis/Projets/nemesis_cli</p>
+<p><strong>Version :</strong> 1.1 - Stable</p>
+
+<h2>1. Resume des modifications</h2>
+<p>La version 1.0 de NEMESIS CLI etait fonctionnelle mais presentait plusieurs limitations : un service d'upload casse (antibot), une lecture de fichiers inefficace (contenu brut envoye a l'IA), des timeouts bloquants pour les taches longues, et des bugs dans le dispatcher d'actions.</p>
+<p>Cette mise a jour corrective et evolutive apporte <strong>5 ameliorations majeures</strong> et corrige <strong>3 bugs critiques</strong>.</p>
+
+<h2>2. Modifications par fichier</h2>
+
+<h3>2.1 uploader.py - Refonte complete du systeme d'upload</h3>
+<p><strong>Probleme initial :</strong> 3 services (tmpfiles, pixeldrain, gofile) avec une cle API en dur, tous bloques par des antibots. Aucun fallback fonctionnel.</p>
+<p><strong>Solution :</strong> Test systematique de 22 fournisseurs via un script dedie. 6 fournisseurs retenus, integres en cascade avec fallback automatique.</p>
+
+<table>
+<tr><th>Ordre</th><th>Fournisseur</th><th>Statut</th></tr>
+<tr><td>1</td><td>litterbox.catbox.moe</td><td class="succes">OK</td></tr>
+<tr><td>2</td><td>gofile.io</td><td class="succes">OK</td></tr>
+<tr><td>3</td><td>tmpfiles.org</td><td class="succes">OK</td></tr>
+<tr><td>4</td><td>uguu.se</td><td class="succes">OK</td></tr>
+<tr><td>5</td><td>x0.at</td><td class="succes">OK</td></tr>
+<tr><td>6</td><td>temp.sh</td><td class="succes">OK</td></tr>
+</table>
+
+<p><strong>Suppressions :</strong></p>
+<ul>
+<li>Cle API Pixeldrain en dur (9b440fb9-dcd6-4cf4-9cec-9c8eb1e4c64c) - faille de securite</li>
+<li>Anciens services : _upload_tmpfiles, _upload_pixeldrain, _upload_gofile (remplaces)</li>
+<li>Module shutil et methode is_cloudflared_available (code mort)</li>
+</ul>
+
+<h3>2.2 tools.py - Nouveau systeme de lecture de fichiers</h3>
+<p><strong>Probleme initial :</strong> L'action read renvoyait le contenu brut des fichiers dans le message, saturant le contexte de l'IA. De plus, le dispatcher etait corrompu avec des blocs en double.</p>
+<p><strong>Solution :</strong> Methode read_file() repensee :</p>
+<ul>
+<li><strong>1 fichier :</strong> conversion en .txt (nomFichier.txt), upload, lien retourne a l'IA, suppression du .txt temporaire</li>
+<li><strong>N fichiers (max 15) :</strong> fusion dans code.txt avec separateurs, un seul upload, un seul lien</li>
+<li>Fichiers originaux jamais modifies</li>
+<li>Nettoyage automatique des .txt temporaires via bloc finally</li>
+</ul>
+
+<p><strong>Format du fichier genere :</strong></p>
+<div class="code">=== main.py ===
+(contenu du fichier python)
+
+============================================================
+
+=== config.yaml ===
+(contenu du fichier yaml)</div>
+
+<p><strong>Corrections de bugs :</strong></p>
+<ul>
+<li>Suppression du double bloc elif action_type == "read" dans execute_action</li>
+<li>Correction de execute_upload (structure corrompue)</li>
+<li>Correction de execute_html_to_pdf (bloc except orphelin)</li>
+</ul>
+
+<h3>2.3 bridge_client.py - Suppression des timeouts</h3>
+<p><strong>Probleme :</strong> Timeouts stricts (5s, 10s, 30s, 60s, 300s, 600s) empechant les taches longues.</p>
+<p><strong>Solution :</strong> Tous les parametres timeout passes a None. Boucle de polling while True (plus de limite de temps).</p>
+
+<table>
+<tr><th>Methode</th><th>Avant</th><th>Apres</th></tr>
+<tr><td>test_connection</td><td>timeout=5</td><td>timeout=None</td></tr>
+<tr><td>send_message (POST)</td><td>timeout=30</td><td>timeout=None</td></tr>
+<tr><td>send_message (poll)</td><td>timeout=10</td><td>timeout=None</td></tr>
+<tr><td>upload_file</td><td>timeout=60</td><td>timeout=None</td></tr>
+<tr><td>ask_with_file</td><td>timeout=60</td><td>timeout=None</td></tr>
+<tr><td>config par defaut</td><td>timeout=300</td><td>timeout=None</td></tr>
+</table>
+
+<h3>2.4 prompt_system.txt - Mise a jour du comportement IA</h3>
+<p><strong>Modifications :</strong></p>
+<ul>
+<li>Workspace corrige : /home/nemesis/Projets/ia_cli/workspace → /home/nemesis/Projets/nemesis_cli/workspace</li>
+<li>Section Lecture de fichiers reecrite : format multi-fichiers avec separateur |, max 15 fichiers, explication du systeme de conversion .txt + upload</li>
+<li>Section Upload de fichiers ajoutee dans les outils specialises</li>
+<li>Suppression des references a 0x0.st et cloudflared (remplaces par les 6 fournisseurs)</li>
+</ul>
+
+<h3>2.5 agent.py - Aucune modification</h3>
+<p>Fichier stable, aucune modification necessaire. La boucle interactive, le parsing des actions et le formatage du feedback restent in changes.</p>
+
+<h2>3. Architecture finale</h2>
+<div class="code">
+NemesisCLI (agent.py)
+  ├── BridgeClient (bridge_client.py) → API Bridge Android (timeout=None)
+  ├── ActionExecutor (tools.py)
+  │     ├── list_dir, read_file*, write, append, patch, bash
+  │     ├── execute_upload, execute_html_to_pdf, execute_pdf_to_text
+  │     ├── check_process, kill_process, cleanup_logs
+  │     └── update_tracker
+  └── FileUploader (uploader.py)
+        ├── litterbox (primaire)
+        ├── gofile.io
+        ├── tmpfiles.org
+        ├── uguu.se
+        ├── x0.at
+        └── temp.sh (dernier recours)
+</div>
+
+<h2>4. Scripts auxiliaires</h2>
+<p><strong>test_upload.py</strong> (dans workspace/) : Script de test autonome qui a permis de debusquer les 6 fournisseurs fonctionnels parmi 22 candidats. Resultat : 6 succes, 16 echecs.</p>
+
+<h2>5. Points de vigilance</h2>
+<ul>
+<li>Les 6 fournisseurs d'upload sont des services tiers gratuits. Ils peuvent changer leur politique a tout moment.</li>
+<li>L'absence de timeout peut bloquer indefiniment si le Bridge Android est deconnecte. L'utilisateur doit faire Ctrl+C.</li>
+<li>Les fichiers .txt temporaires sont supprimes automatiquement, mais en cas de crash brutal, un nettoyage manuel peut etre necessaire.</li>
+</ul>
+
+<h2>6. Conclusion</h2>
+<p>La version 1.1 de NEMESIS CLI est operationnelle et stable. Les 3 bugs critiques ont ete resolus, le systeme d'upload est resilient avec 6 fournisseurs en cascade, la lecture de fichiers est optimisee pour ne jamais saturer le contexte de l'IA, et les timeouts ont ete supprimes pour permettre les taches longues.</p>
+<p><strong>Prochaine etape envisagee :</strong> Implementation du fallback cloudflared tunnel pour une autonomie totale sans services tiers.</p>
+
+<div class="footer">
+Rapport genere par NEMESIS CLI - 27 avril 2026
+</div>
+
+</body>
+</html>
+```

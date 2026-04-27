@@ -1,0 +1,91 @@
+================================================================================
+          GUIDE D'INSTALLATION ET D'INTÉGRATION : NEMESIS CLI
+================================================================================
+
+Bienvenue dans l'écosystème NEMESIS. Ce document détaille la procédure complète
+pour installer et configurer l'agent NEMESIS CLI sur un système Linux.
+
+--------------------------------------------------------------------------------
+1. PRÉREQUIS SYSTÈME
+--------------------------------------------------------------------------------
+- Système d'exploitation : Linux (Debian, Ubuntu, ou dérivés recommandés).
+- Python : Version 3.13 installée sur le système.
+- Git : Installé pour le clonage du dépôt.
+- LibreOffice : Installé pour la suite bureautique et conversion PDF (soffice).
+- GitHub CLI (gh) : Recommandé pour une gestion simplifiée des dépôts.
+
+Installation des dépendances de base (exemple Debian/Ubuntu) :
+$ sudo apt update
+$ sudo apt install -y python3.13 python3-venv git libreoffice
+
+--------------------------------------------------------------------------------
+2. CLONAGE DU DÉPÔT
+--------------------------------------------------------------------------------
+Le dépôt est privé. Vous devez être authentifié avec GitHub CLI ou utiliser 
+un token d'accès personnel.
+
+$ gh auth login
+$ gh repo clone teteekoue/NEMESIS-CLI
+$ cd NEMESIS-CLI
+
+--------------------------------------------------------------------------------
+3. INSTALLATION DE L'ENVIRONNEMENT VIRTUEL
+--------------------------------------------------------------------------------
+Il est impératif d'utiliser un environnement virtuel dédié pour isoler les 
+dépendances Python du projet.
+
+$ python3.13 -m venv venv
+$ ./venv/bin/pip install --upgrade pip
+$ ./venv/bin/pip install -r requirements.txt
+
+--------------------------------------------------------------------------------
+4. CONFIGURATION INITIALE
+--------------------------------------------------------------------------------
+Le fichier 'config.yaml' doit être configuré pour correspondre à votre 
+infrastructure (Bridge Android).
+
+bridge:
+  host: "VOTRE_IP_BRIDGE"
+  port: 8080
+
+1. Ouvrez config.yaml avec votre éditeur favori.
+2. Remplacez "VOTRE_IP_BRIDGE" par l'adresse IP de votre téléphone Android.
+
+--------------------------------------------------------------------------------
+5. INTÉGRATION GLOBALE (Raccourci CLI)
+--------------------------------------------------------------------------------
+Pour lancer NEMESIS depuis n'importe quel dossier :
+
+$ sudo ln -s /CHEMIN/COMPLET/VERS/NEMESIS-CLI/nemesis-cli /usr/local/bin/nemesis-cli
+
+Testez la commande :
+$ nemesis-cli --help
+
+--------------------------------------------------------------------------------
+6. UTILISATION DE L'AGENT
+--------------------------------------------------------------------------------
+- Lancement : tapez 'nemesis-cli' dans votre terminal.
+- Workspace : Le dossier 'workspace/' est votre zone de travail principale.
+- LibreOffice : NEMESIS utilise 'soffice' pour convertir vos fichiers HTML en PDF.
+
+--------------------------------------------------------------------------------
+7. DÉPANNAGE ET MAINTENANCE
+--------------------------------------------------------------------------------
+- "Connection refused" : Vérifiez l'adresse IP dans 'config.yaml'.
+- "Command not found" : Vérifiez que /usr/local/bin est dans votre PATH.
+- "Action failed" : Consultez les logs dans le répertoire 'history/'.
+
+--------------------------------------------------------------------------------
+8. SÉCURITÉ ET MISES À JOUR
+--------------------------------------------------------------------------------
+- Mises à jour : 
+  $ git pull origin master
+  $ ./venv/bin/pip install -r requirements.txt
+- Sécurité : Ne jamais pousser le fichier 'config.yaml' s'il contient des secrets.
+- Le dépôt est configuré en mode PRIVE. Gardez vos accès GitHub sécurisés.
+
+--------------------------------------------------------------------------------
+Pour toute assistance, consultez le répertoire tools_library/ pour comprendre 
+comment étendre les capacités de l'agent.
+================================================================================
+# EOF
