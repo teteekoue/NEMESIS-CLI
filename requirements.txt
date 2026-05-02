@@ -1,0 +1,5 @@
+pyyaml>=6.0
+rich>=13.0.0
+requests>=2.28.0flask>=3.0
+flask-sock>=0.7
+simple-websocket>=1.0

@@ -1,0 +1,63 @@
+
+lis tous les fichiers  de l'espace d e travail
+
+<ACTION type="list_dir">/home/nemesis/Projets/nemesis_cli/workspace</ACTION>
+FEEDBACK:
+Action: list_dir
+Succès: False
+Output:
+Action inconnue: list_dir
+
+L'action list_dir n'est pas reconnue par le système. Je vais utiliser une commande bash pour lister le contenu du workspace.
+
+<ACTION type="bash">synchrone | ls -la /home/nemesis/Projets/nemesis_cli/workspace</ACTION>
+FEEDBACK:
+Action: bash
+Succès: True
+Output:
+total 60
+drwxrwxr-x 3 nemesis nemesis  4096 27 avril 12:17 .
+drwxrwxr-x 6 nemesis nemesis  4096 27 avril 11:50 ..
+-rw-rw-r-- 1 nemesis nemesis 30183  5 avril 22:03 index.html
+-rwxrwxr-x 1 nemesis nemesis  4254 26 avril 17:00 integration.txt
+drwxrwxr-x 2 nemesis nemesis  4096 27 avril 12:01 __pycache__
+-rw-rw-r-- 1 nemesis nemesis  7203 27 avril 12:01 test_upload.py
+
+Le workspace contient 3 fichiers et 1 dossier :
+Nom	Type	Taille	Dernière modification
+index.html	Fichier	30 Ko	5 avril 22:03
+integration.txt	Fichier	4,2 Ko	26 avril 17:00
+test_upload.py	Fichier	7,2 Ko	27 avril 12:01
+__pycache__/	Dossier	-	27 avril 12:01
+
+Souhaites-tu que je lise le contenu de index.html et test_upload.py ? (J'ai déjà lu integration.txt précédemment.)
+oui
+
+<ACTION type="read">/home/nemesis/Projets/nemesis_cli/workspace/index.html | /home/nemesis/Projets/nemesis_cli/workspace/test_upload.py</ACTION>
+FEEDBACK:
+Action: read
+Succès: False
+Output:
+invalid literal for int() with base 10: ' /home/nemesis/Projets/nemesis_cli/workspace/test_upload.py'
+
+Le séparateur semble poser problème. Je vais lire les fichiers un par un.
+
+<ACTION type="read">/home/nemesis/Projets/nemesis_cli/workspace/index.html</ACTION>
+FEEDBACK:
+Action: read
+Succès: False
+Output:
+ActionExecutor.read_file() takes 2 positional arguments but 4 were given
+
+Le séparateur | semble segmenter l'argument en plusieurs paramètres. Je tente avec un seul fichier sans espaces autour du pipe.
+
+<ACTION type="read">index.html</ACTION>
+FEEDBACK:
+Action: read
+Succès: False
+Output:
+ActionExecutor.read_file() takes 2 positional arguments but 4 were given
+
+Il semble y avoir un problème de parsing de l'action. Je vais utiliser bash pour lire les fichiers.
+
+<ACTION type="bash">synchrone | cat /home/nemesis/Projets/nemesis_cli/workspace/index.html</ACTION>
