@@ -141,8 +141,18 @@ class NemesisCLI:
             if parsed['action']:
                 act_type = parsed['action']['type']
                 act_content = parsed['action']['content']
-                console.print(f"[action]⚡ ACTION :[/action] [command]{act_type.upper()}[/command]")
-                console.print(f"[dim]Contenu :[/dim]\n[command]{act_content}[/command]\n")
+                
+                if act_type.lower() == "patch":
+                    # Affichage amélioré pour le PATCH : on affiche le diff coloré
+                    console.print(f"[action]⚡ ACTION :[/action] [command]PATCH[/command]")
+                    console.print(f"[dim]Diff généré :[/dim]")
+                    # On utilise Markdown de rich pour colorer le bloc diff
+                    console.print(Markdown(f"```diff\n{act_content.strip()}\n```"))
+                else:
+                    console.print(f"[action]⚡ ACTION :[/action] [command]{act_type.upper()}[/command]")
+                    console.print(f"[dim]Contenu :[/dim]\n[command]{act_content[:200]}[/command]...")
+                
+                console.print()
 
                 if not self.auto_allow:
                     choice = Prompt.ask("  [system]Autoriser ?[/system]", choices=["y", "n", "a"], default="y")
@@ -173,20 +183,45 @@ class NemesisCLI:
 
     def _parse_response(self, resp: str) -> Dict:
         parsed = {'text': resp, 'action': None}
-        # Supprime les blocs de code markdown pour eviter les fausses actions
-        cleaned = re.sub(r'```.*?```', '', resp, flags=re.S)
-        a = re.search(r'<ACTION\s+type="([\w-]+)">(.*?)</ACTION>', cleaned, re.S | re.I)
-        if a:
-            parsed['action'] = {'type': a.group(1).lower(), 'content': a.group(2).strip()}
-        clean_text = re.sub(r'<ACTION.*?>.*?</ACTION>', '', resp, flags=re.S | re.I)
-        parsed['text'] = clean_text.strip()
+
+        if resp.startswith("FEEDBACK:"):
+            parsed['text'] = resp
+            return parsed
+
+        # Regex pour capturer le bloc <ACTION> dans un bloc de code (triple backticks)
+        # On cherche ```\n<ACTION.../ACTION>\n```
+        action_pattern = re.compile(r'```(?:[a-z]*)\s*?(<ACTION.*?>.*?</ACTION>)\s*?```', re.S | re.I)
+        match = action_pattern.search(resp)
+        
+        if match:
+            action_full = match.group(1)
+            # Nettoyer le texte en enlevant le bloc d'action trouvé
+            parsed['text'] = resp.replace(match.group(0), "").strip()
+            
+            # Parser le type et le contenu de l'action
+            type_match = re.search(r'<ACTION\s+type="([\w-]+)">', action_full, re.I)
+            if type_match:
+                action_type = type_match.group(1).lower()
+                # Extraire le contenu entre <ACTION> et </ACTION>
+                content_match = re.search(r'<ACTION.*?>\s*(.*?)\s*</ACTION>', action_full, re.S | re.I)
+                action_content = content_match.group(1).strip() if content_match else ""
+                
+                parsed['action'] = {
+                    'type': action_type,
+                    'content': action_content
+                }
+        else:
+            parsed['text'] = resp.strip()
+
         return parsed
 
     def _format_feedback(self, action: Dict, res: Dict) -> str:
         output = res.get('stdout', res.get('content', ''))
+
         MAX_CHARS = 500000
         if len(output) > MAX_CHARS:
             output = output[:MAX_CHARS] + "\n\n[AVERTISSEMENT SYSTEME : Logs tronques. Utilisez 'read' sur les fichiers de log pour voir la suite.]"
+
         return f"FEEDBACK:\nAction: {action['type']}\nSucces: {res.get('success', False)}\nOutput:\n{output}"
 
 

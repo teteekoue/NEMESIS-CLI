@@ -1,0 +1,357 @@
+# FICHE TECHNIQUE — NEMESIS DESKTOP
+
+---
+
+## 1. ÉTAT ACTUEL : NEMESIS CLI (Fonctionnel)
+
+### Architecture
+```
+nemesis-cli/
+├── agent.py                 # Boucle interactive, parsing actions, communication IA
+├── bridge_client.py         # Client HTTP pour API Bridge Android
+├── tools.py                 # Exécuteur d'actions (bash, read, write, patch, pdf, upload)
+├── uploader.py              # Upload fichiers vers 5 services en cascade
+├── context_manager.py       # Gestion sessions JSON pour historique conversations
+├── config.yaml              # Configuration bridge (host, port)
+├── prompt_system.txt        # Instructions système pour l'IA
+├── requirements.txt         # pyyaml, rich, requests
+└── workspace/               # Bac à sable
+```
+
+### Fonctionnalités actuelles
+| Action | Description |
+|--------|-------------|
+| `bash` | Exécution commandes shell (synchrone/asynchrone, timeout 5 min) |
+| `read` | Lecture multi-fichiers → upload → lien public |
+| `write` | Création/écrasement de fichiers avec contenu protégé |
+| `append` | Ajout à un fichier existant |
+| `patch` | Modification via diff unifié (fuzz=2) |
+| `list_dir` | Exploration arborescence |
+| `validate` | Vérification syntaxe Python/Bash |
+| `upload` | Upload fichier → 5 fournisseurs en cascade |
+| `html_to_pdf` | Conversion HTML → PDF (LibreOffice) |
+| `pdf_to_text` | Extraction texte PDF |
+| `stop_all` | Arrêt processus asynchrones |
+| `status` | Vérification état processus |
+| `cleanup_logs` | Nettoyage logs terminés |
+
+### Communication IA
+- **Mode Bridge** : HTTP POST → API Bridge Android → polling /result
+- **Mode Proxy** : HTTP POST → DeepSeek Proxy local (localhost:8000/v1)
+- **Parsing** : Extraction balises `<ACTION>` protégées dans blocs de code
+
+---
+
+## 2. CIBLE : NEMESIS DESKTOP (Tauri)
+
+### Stack technique
+
+| Couche | Technologie | Justification |
+|--------|-------------|---------------|
+| **Interface** | HTML5 + CSS3 + JavaScript | Rendu riche, animations, responsive |
+| **Moteur de rendu** | WebKitGTK (intégré Linux) | Pas de navigateur, pas de Chromium |
+| **Backend** | Rust (Tauri) | Binaire compilé, performance native |
+| **Logique métier** | Python 3 (agent.py, tools.py) | Code existant réutilisé intégralement |
+| **Communication** | Rust ↔ Python via stdin/stdout JSON | Pas de HTTP, pas de socket |
+| **Packaging** | GitHub Actions | Compilation croisée 32/64 bits |
+
+### Architecture cible
+
+```
+nemesis-desktop/
+├── src/                          # Interface utilisateur
+│   ├── index.html                # Point d'entrée
+│   ├── css/
+│   │   ├── theme.css             # Variables dark/light
+│   │   ├── chat.css              # Bulles conversation
+│   │   ├── logs.css              # Panneau terminaux
+│   │   └── sidebar.css           # Navigation, explorateur fichiers
+│   ├── js/
+│   │   ├── app.js                # Initialisation, événements
+│   │   ├── chat.js               # Envoi/réception messages
+│   │   ├── logs.js               # Gestion terminaux temps réel
+│   │   ├── ide.js                # Éditeur de code embarqué
+│   │   └── settings.js           # Configuration backend
+│   └── assets/
+│       ├── logo.svg
+│       └── fonts/
+├── src-tauri/                    # Backend Rust
+│   ├── Cargo.toml                # Dépendances Rust
+│   ├── tauri.conf.json           # Config fenêtre, permissions
+│   ├── icons/                    # Icônes app (png, ico, icns)
+│   └── src/
+│       ├── main.rs               # Lancement, gestion fenêtres
+│       ├── commands.rs           # Commandes Tauri (invoke)
+│       └── python_bridge.rs      # Subprocess Python, JSON IPC
+├── python/                       # Code NEMESIS existant (inchange)
+│   ├── agent.py
+│   ├── bridge_client.py
+│   ├── tools.py
+│   ├── uploader.py
+│   ├── context_manager.py
+│   └── prompt_system.txt
+├── .github/workflows/
+│   └── build.yml                 # Compilation multi-cible
+├── package.json                  # Dépendances npm (tauri, frontend)
+└── README.md
+```
+
+### Communication Rust ↔ Python
+
+```
+Interface (JS)
+    │ invoke('send_message', {text: "salut"})
+    ▼
+Rust (Tauri Command)
+    │ stdin → JSON {"command": "send", "message": "salut"}
+    ▼
+Python (agent.py --mode=ipc)
+    │ Traitement via bridge_client.py
+    │ stdout → JSON {"type": "response", "text": "Bonjour..."}
+    ▼
+Rust (Tauri Command)
+    │ emit('ai_response', data)
+    ▼
+Interface (JS)
+    │ Mise à jour du chat
+```
+
+### Fonctionnalités desktop ajoutées
+
+| Fonctionnalité | Implémentation |
+|----------------|----------------|
+| **Systray** | Icône dans la barre des tâches, menu contextuel |
+| **Notifications natives** | `notify-send` via Rust ou lib Tauri |
+| **Raccourcis clavier** | Ctrl+N (nouvelle session), Ctrl+S (sauver), Ctrl+Q (quitter) |
+| **Démarrage automatique** | Option activable dans settings |
+| **Mises à jour auto** | Tauri updater, vérification au lancement |
+| **Mode hors ligne** | Tout le code est local, seul le bridge IA requiert réseau |
+| **Explorateur fichiers** | Arborescence workspace en sidebar |
+| **IDE intégré** | Éditeur avec coloration syntaxique (Monaco Editor embarqué) |
+| **Terminaux** | Multi-terminaux synchrones/asynchrones |
+| **Gestion sessions** | Liste, création, suppression, export/import |
+
+### Interface utilisateur (layout)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ 🤖 NEMESIS Desktop                         [─] [□] [✕]      │
+├──────────┬───────────────────────────────────┬──────────────┤
+│ SIDEBAR  │        CHAT PRINCIPAL             │   LOGS       │
+│          │                                   │              │
+│ 📁 Worksp│  👤 Utilisateur                   │ ⚡ sync-bash │
+│  ace     │  └ Contenu du message             │ $ ls -la     │
+│          │                                   │ total 48K    │
+│ 📄 Fichie│  🤖 NEMESIS                       │              │
+│  rs      │  └ Réponse de l'IA               │ ⚡ async-pid  │
+│  ├ main  │                                   │ PID 12345    │
+│  │ .py   │  ⚡ ACTION: write                 │ running...   │
+│  ├ conf  │  ✔ OK                            │              │
+│  │ ig.ya │                                   │ 💻 Terminal  │
+│  └ test  │                                   │ $ _          │
+│  │ .py   │                                   │              │
+│          │                                   │              │
+│ 🔧 Outil │  ┌─────────────────────────────┐ │              │
+│  s       │  │ Message...              [➤] │ │              │
+│          │  └─────────────────────────────┘ │              │
+│ ⚙️ Param │                                   │              │
+│  ètres   │  [✓ Auto-approve] [📎 Upload]   │              │
+│          │                                   │              │
+│ 📊 Statu │                                   │              │
+│  s       │                                   │              │
+│  • Brid  │                                   │              │
+│  ge: ✅  │                                   │              │
+│  • CPU:  │                                   │              │
+│  12%     │                                   │              │
+└──────────┴───────────────────────────────────┴──────────────┘
+│ BARRE DE STATUT                                             │
+│ Session: 20260504_test | Messages: 15 | Uptime: 02:34:12   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 3. ÉTAPES DE RÉALISATION
+
+### Phase 1 : Environnement (Jour 1)
+
+| Étape | Commande/Action | Durée |
+|-------|-----------------|-------|
+| 1.1 Installer Rust | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` | 15 min |
+| 1.2 Installer dépendances système | `sudo apt install libwebkit2gtk-4.0-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf` | 10 min |
+| 1.3 Installer Tauri CLI | `cargo install tauri-cli` | 10 min |
+| 1.4 Installer Node.js (npm) | Déjà installé | — |
+| 1.5 Vérification | `rustc --version && cargo --version && npm --version` | 2 min |
+
+### Phase 2 : Initialisation projet (Jour 1)
+
+| Étape | Action | Durée |
+|-------|--------|-------|
+| 2.1 Créer le projet | `npm create tauri-app@latest nemesis-desktop` | 5 min |
+| 2.2 Configurer tauri.conf.json | Titre: "NEMESIS Desktop", taille: 1200x800, min: 900x600 | 10 min |
+| 2.3 Copier code Python | `cp -r nemesis-cli/*.py nemesis-desktop/python/` | 2 min |
+| 2.4 Premier lancement dev | `npm run tauri dev` → fenêtre vide | 5 min |
+| 2.5 Configurer .gitignore | `node_modules/`, `src-tauri/target/`, `python/__pycache__/` | 5 min |
+
+### Phase 3 : Interface utilisateur (Jours 2-4)
+
+| Étape | Composant | Priorité |
+|-------|-----------|----------|
+| 3.1 | Layout principal (sidebar + chat + logs) | 🔴 Haute |
+| 3.2 | Thème sombre CSS (variables, polices, couleurs) | 🔴 Haute |
+| 3.3 | ChatPanel : bulles, avatars, markdown, actions | 🔴 Haute |
+| 3.4 | InputArea : textarea, bouton envoi, auto-approve | 🔴 Haute |
+| 3.5 | LogsPanel : blocs terminaux, streaming temps réel | 🟡 Moyenne |
+| 3.6 | Sidebar : explorateur workspace, navigation | 🟡 Moyenne |
+| 3.7 | IDEPanel : Monaco Editor, explorateur fichiers | 🟢 Basse |
+| 3.8 | SettingsPanel : configuration backend, thème | 🟢 Basse |
+| 3.9 | StatusBar : session, messages, uptime | 🟢 Basse |
+| 3.10 | Systray : icône, menu contextuel | 🟢 Basse |
+
+### Phase 4 : Backend Rust (Jours 3-5)
+
+| Étape | Fichier | Description |
+|-------|---------|-------------|
+| 4.1 | `python_bridge.rs` | Lance `agent.py --mode=ipc`, gère stdin/stdout JSON |
+| 4.2 | `commands.rs` | `send_message`, `execute_action`, `get_status` |
+| 4.3 | `main.rs` | Initialisation Tauri, enregistrement commands, menu |
+| 4.4 | IPC Protocol | Format JSON : `{"type":"request"|"response"|"event", "data":{...}}` |
+| 4.5 | Gestion erreurs | Timeout, crash Python, reconnexion automatique |
+
+### Phase 5 : Intégration (Jours 5-6)
+
+| Étape | Action |
+|-------|--------|
+| 5.1 | Adapter `agent.py` pour mode IPC (stdin/stdout au lieu de console) |
+| 5.2 | Tests unitaires communication Rust ↔ Python |
+| 5.3 | Tests bout en bout : message → réponse IA → action → feedback |
+| 5.4 | Gestion multi-sessions (onglets ou fenêtres) |
+| 5.5 | Persistance configuration (fichier JSON local) |
+
+### Phase 6 : CI/CD & Packaging (Jours 6-7)
+
+| Étape | Action |
+|-------|--------|
+| 6.1 | Créer `.github/workflows/build.yml` |
+| 6.2 | Configurer cibles : `i686-unknown-linux-gnu`, `i686-pc-windows-msvc` |
+| 6.3 | Test compilation croisée |
+| 6.4 | Génération `.deb` 32 bits |
+| 6.5 | Génération `.exe` 32 bits |
+| 6.6 | Créer release GitHub avec assets |
+| 6.7 | Ajouter updater Tauri pour mises à jour automatiques |
+
+### Phase 7 : Polish & Tests (Jours 7-8)
+
+| Étape | Action |
+|-------|--------|
+| 7.1 | Tests sur antiX 32 bits réel |
+| 7.2 | Tests sur Windows 10 32 bits (VM) |
+| 7.3 | Optimisation performances (lazy loading, gestion mémoire) |
+| 7.4 | Packaging icônes (png, ico, icns) |
+| 7.5 | README, documentation installation |
+| 7.6 | CHANGELOG, versioning sémantique |
+
+---
+
+## 4. PROTOCOLE IPC (Inter-Process Communication)
+
+### Format des messages
+
+```json
+// Rust → Python (requête)
+{
+  "id": "req_001",
+  "command": "send_message",
+  "params": {
+    "message": "salut",
+    "session_id": "20260504_test",
+    "auto_approve": false
+  }
+}
+
+// Python → Rust (réponse)
+{
+  "id": "req_001",
+  "type": "response",
+  "data": {
+    "text": "Bonjour ! Je suis NEMESIS...",
+    "action": {
+      "type": "list_dir",
+      "content": "./workspace"
+    }
+  }
+}
+
+// Python → Rust (événement asynchrone)
+{
+  "id": null,
+  "type": "event",
+  "event": "log_line",
+  "data": {
+    "block_id": "sync-bash",
+    "line": "$ ls -la\n"
+  }
+}
+```
+
+### Cycle de vie d'un message
+
+```
+1. JS: invoke('send_message', {message: "salut"})
+2. Rust: commands.rs → serialize → stdin Python
+3. Python: agent.py traite → bridge_client → IA
+4. Python: stdout → JSON response
+5. Rust: deserialize → emit('ai_response', data)
+6. JS: listener → mise à jour UI
+7. Si action: JS: invoke('approve_action', {choice: "y"})
+8. Rust → Python → exécute tools.py → feedback → JS
+```
+
+---
+
+## 5. DÉPENDANCES TECHNIQUES
+
+### Côté Rust (Cargo.toml)
+```toml
+[dependencies]
+tauri = { version = "1.5", features = ["system-tray", "notification"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+```
+
+### Côté npm (package.json)
+```json
+{
+  "dependencies": {
+    "@tauri-apps/api": "^1.5",
+    "monaco-editor": "^0.44"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^1.5"
+  }
+}
+```
+
+### Côté système (antiX 32 bits)
+```
+libwebkit2gtk-4.0-dev
+libgtk-3-dev
+libayatana-appindicator3-dev
+librsvg2-dev
+patchelf
+```
+
+---
+
+## 6. LIVRABLES FINAUX
+
+| Fichier | Plateforme | Architecture |
+|---------|------------|--------------|
+| `nemesis-desktop_1.0.0_i386.deb` | Linux (Debian/Ubuntu/antiX) | 32 bits |
+| `nemesis-desktop_1.0.0_amd64.deb` | Linux (Debian/Ubuntu) | 64 bits |
+| `nemesis-desktop_1.0.0_x86.msi` | Windows | 32 bits |
+| `nemesis-desktop_1.0.0_x64.msi` | Windows | 64 bits |
+
+---
+
+
