@@ -1,6 +1,0 @@
-{
-  "title": "{{ title }}",
-  "content": "{{ content }}",
-  "subject": "{{ subject }}",
-  "date": "{{ date }}"
-}

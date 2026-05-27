@@ -63,8 +63,6 @@ class ActionExecutor:
         return {"success": result.returncode == 0, "stdout": result.stdout + result.stderr}
 
     def _extract_action_content(self, content):
-        """Extrait tout le texte entre les triples backticks englobants."""
-        # Regex pour trouver le contenu d'un bloc de code (triple backticks)
         pattern = re.compile(r'^```.*?\n(.*?)\n```$', re.DOTALL | re.MULTILINE)
         match = pattern.search(content.strip())
         return match.group(1).strip() if match else content.strip()
@@ -87,106 +85,236 @@ class ActionExecutor:
         except Exception as e:
             return {"success": False, "stdout": str(e)}
 
-    def patch_file(self, path, start_line, end_line, new_content):
-        try:
-            file_path = self.resolve_path(path)
-            with open(file_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-            clean = self._strip_wrapping_backticks(new_content)
-            if not clean:
-                return {"success": False, "stdout": "Contenu vide apres nettoyage - patch non applique"}
-            lines[max(0, start_line-1):end_line] = [l + "\n" for l in clean.splitlines()]
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.writelines(lines)
-            msg = f"Patch applique: {file_path}"
-            if file_path.suffix in [".py", ".sh"]:
-                val = self.validate_code(str(file_path))
-                if not val["success"]:
-                    msg += " (attention syntaxe)"
-            return {"success": True, "stdout": msg}
-        except Exception as e:
-            return {"success": False, "stdout": str(e)}
+    # =====================================================================
+    # NOUVEAU SYSTEME REPLACE (Search & Replace en cascade 4 niveaux)
+    # =====================================================================
+
+    def _normalize_whitespace(self, text):
+        """Niveau 2 : reduit les espaces multiples a un seul, strip debut/fin de ligne."""
+        lines = []
+        for line in text.splitlines():
+            lines.append(re.sub(r'[ \t]+', ' ', line).strip())
+        return '\n'.join(lines)
+
+    def _strip_indent(self, text):
+        """Niveau 3 : supprime toute indentation en debut de ligne."""
+        lines = []
+        for line in text.splitlines():
+            lines.append(line.lstrip())
+        return '\n'.join(lines)
+
+    def _levenshtein_ratio(self, a, b):
+        """Niveau 4 : ratio de similarite entre deux chaines (0.0 a 1.0)."""
+        if not a and not b:
+            return 1.0
+        if not a or not b:
+            return 0.0
+        m, n = len(a), len(b)
+        if m == 0 or n == 0:
+            return 0.0
+        # Matrice optimisee (une seule ligne)
+        prev = list(range(n + 1))
+        curr = [0] * (n + 1)
+        for i in range(1, m + 1):
+            curr[0] = i
+            for j in range(1, n + 1):
+                cost = 0 if a[i-1] == b[j-1] else 1
+                curr[j] = min(prev[j] + 1, curr[j-1] + 1, prev[j-1] + cost)
+            prev, curr = curr, prev
+        distance = prev[n]
+        max_len = max(m, n)
+        return 1.0 - (distance / max_len)
+
+    def _find_block_position(self, original_content, normalized_search, normalized_full, level):
+        """Retrouve la position du bloc SEARCH dans le contenu original."""
+        pos = normalized_full.find(normalized_search)
+        if pos == -1:
+            return -1, -1
+
+        # Compter les caracteres pour retrouver la position dans l'original
+        orig_lines = original_content.splitlines(True)
+        norm_lines = normalized_full.splitlines(True)
+        search_lines = normalized_search.splitlines(True)
+
+        line_count = 0
+        char_count = 0
+        for i, line in enumerate(norm_lines):
+            if char_count >= pos:
+                line_count = i
+                break
+            char_count += len(line)
+
+        # Compter la longueur du bloc original correspondant
+        start_pos = 0
+        for i in range(line_count):
+            start_pos += len(orig_lines[i])
+
+        end_line = min(line_count + len(search_lines), len(orig_lines))
+        end_pos = start_pos
+        for i in range(line_count, end_line):
+            end_pos += len(orig_lines[i])
+
+        return start_pos, end_pos
+
+    def _search_and_replace_block(self, content, search_block, replace_block, file_path_for_errors=""):
+        """
+        Cherche search_block dans content avec 4 niveaux de tolerance,
+        puis le remplace par replace_block.
+        Retourne (new_content, success, error_message).
+        """
+        # Niveau 1 : Exact
+        count = content.count(search_block)
+        if count == 1:
+            new_content = content.replace(search_block, replace_block, 1)
+            return new_content, True, None
+        elif count > 1:
+            return content, False, f"Bloc trouve {count} fois dans le fichier. Ajoute plus de contexte pour le rendre unique."
+
+        # Niveau 2 : Normalisation des espaces
+        norm_search = self._normalize_whitespace(search_block)
+        norm_content = self._normalize_whitespace(content)
+        count = norm_content.count(norm_search)
+        if count == 1:
+            start, end = self._find_block_position(content, norm_search, norm_content, "whitespace")
+            if start >= 0:
+                new_content = content[:start] + replace_block + content[end:]
+                return new_content, True, None
+            return content, False, "Erreur interne : bloc normalise trouve mais position introuvable."
+        elif count > 1:
+            return content, False, f"Bloc trouve {count} fois apres normalisation. Ajoute plus de contexte."
+
+        # Niveau 3 : Ignore l'indentation
+        noindent_search = self._strip_indent(search_block)
+        noindent_content = self._strip_indent(content)
+        count = noindent_content.count(noindent_search)
+        if count == 1:
+            start, end = self._find_block_position(content, noindent_search, noindent_content, "noindent")
+            if start >= 0:
+                new_content = content[:start] + replace_block + content[end:]
+                return new_content, True, None
+            return content, False, "Erreur interne : bloc sans indentation trouve mais position introuvable."
+        elif count > 1:
+            return content, False, f"Bloc trouve {count} fois apres suppression de l'indentation. Ajoute plus de contexte."
+
+        # Niveau 4 : Flou (Levenshtein)
+        best_ratio = 0.0
+        best_start = -1
+        best_end = -1
+        lines = content.splitlines(True)
+        search_lines = search_block.splitlines(True)
+        search_len = len(search_block)
+        total_len = len(content)
+
+        for i in range(len(lines) - len(search_lines) + 1):
+            # Fenetre approximative basee sur les lignes
+            window_start = sum(len(l) for l in lines[:i])
+            window_end = window_start + sum(len(l) for l in lines[i:i+len(search_lines)])
+            window_end = min(window_end, total_len)
+            window_text = content[window_start:window_end]
+            ratio = self._levenshtein_ratio(search_block, window_text)
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_start = window_start
+                best_end = window_end
+
+        if best_ratio >= 0.85:
+            new_content = content[:best_start] + replace_block + content[best_end:]
+            return new_content, True, None
+
+        # Echec total : generer un feedback utile
+        context_lines = []
+        file_lines = content.splitlines()
+        for idx, line in enumerate(file_lines[:20], 1):
+            if search_block.splitlines()[0].strip()[:20] in line:
+                start_ctx = max(0, idx - 3)
+                end_ctx = min(len(file_lines), idx + 5)
+                for ln in range(start_ctx, end_ctx):
+                    context_lines.append(f"   {ln+1}| {file_lines[ln]}")
+                break
+        if not context_lines:
+            total_lines = len(file_lines)
+            mid = total_lines // 2
+            for ln in range(max(0, mid-3), min(total_lines, mid+5)):
+                context_lines.append(f"   {ln+1}| {file_lines[ln]}")
+
+        ctx_str = '\n'.join(context_lines[:15]) if context_lines else "Fichier vide ou illisible."
+        return content, False, f"Bloc SEARCH introuvable (meme avec tolerance floue).\nContenu actuel autour de la zone probable :\n{ctx_str}\nLe fichier a peut-etre deja ete modifie ? Verifie avec read ou cat."
 
     def replace_file(self, path, content):
         """
         Remplace un ou plusieurs blocs dans un fichier.
-        Format attendu dans content:
-            <<<<<<< SEARCH
-            bloc a chercher
-            =======
-            bloc de remplacement
-            >>>>>>> REPLACE
-
-        Supporte plusieurs blocs SEARCH/REPLACE dans une seule action.
-        Chaque bloc SEARCH doit etre UNIQUE dans le fichier.
+        Format : le nom du fichier sur la premiere ligne, puis blocs SEARCH/REPLACE.
+        Chaque bloc est traite sequentiellement (l'ordre compte).
         """
         try:
             file_path = self.resolve_path(path)
             if not file_path.exists():
                 return {"success": False, "stdout": f"Fichier introuvable: {path}"}
 
-            # Sauvegarde de securite (checkpoint)
             with open(file_path, "r", encoding="utf-8") as f:
                 original = f.read()
+
+            # Parser les blocs : le contenu est deja nettoye par _extract_action_content
+            # Format attendu : <<<<<<< SEARCH\n...\n=======\n...\n>>>>>>> REPLACE
+            blocks = content.split("<<<<<<< SEARCH")
+            if len(blocks) < 2:
+                return {"success": False, "stdout": "Aucun bloc SEARCH trouve. Format attendu : <<<<<<< SEARCH\\n...\\n=======\\n...\\n>>>>>>> REPLACE"}
 
             modified = original
             replacements_done = 0
             errors = []
 
-            # Parser les blocs SEARCH/REPLACE avec une Regex robuste
-            # Format attendu: SEARCH\n\n```...```\n\nREPLACE\n\n```...```\n\nEND
-            # On utilise re.DOTALL pour permettre aux points de matcher les sauts de ligne
-            pattern = re.compile(r'SEARCH\s+(.*?)\s+REPLACE\s+(.*?)\s+END', re.DOTALL)
-            
-            # On cherche le nom du fichier (première ligne)
-            lines = content.strip().split("\n", 1)
-            file_path = self.resolve_path(lines[0].strip())
-            body = lines[1] if len(lines) > 1 else ""
-            
-            matches = pattern.findall(body)
-            if not matches:
-                return {"success": False, "stdout": "Format REPLACE invalide. Attendu: Fichier\\nSEARCH\\n...\\nREPLACE\\n...\\nEND"}
+            for block in blocks[1:]:
+                if ">>>>>>> REPLACE" not in block:
+                    continue
+                if "=======" not in block:
+                    continue
 
-            for search_content, replace_content in matches:
-                search_part = self._strip_wrapping_backticks(search_content)
-                replace_part = self._strip_wrapping_backticks(replace_content)
+                parts = block.split("=======", 1)
+                if len(parts) != 2:
+                    continue
+
+                search_part = parts[0].strip()
+                replace_part = parts[1].split(">>>>>>> REPLACE")[0].strip()
 
                 if not search_part:
-                    errors.append("Bloc SEARCH vide après nettoyage")
+                    errors.append("Bloc SEARCH vide - ignore.")
                     continue
 
-                # Compter les occurrences
-                count = modified.count(search_part)
-                if count == 0:
-                    errors.append(f"Bloc introuvable: {search_part[:50]}...")
-                    continue
-                if count > 1:
-                    errors.append(f"Bloc trouvé {count} fois (doit être unique): {search_part[:50]}...")
-                    continue
+                new_content, success, error = self._search_and_replace_block(
+                    modified, search_part, replace_part, str(file_path)
+                )
 
-                modified = modified.replace(search_part, replace_part, 1)
-                replacements_done += 1
+                if success:
+                    modified = new_content
+                    replacements_done += 1
+                elif error:
+                    errors.append(error)
 
             if replacements_done == 0:
-                return {"success": False, "stdout": f"Aucun remplacement effectue. Erreurs: {'; '.join(errors) if errors else 'Aucun bloc SEARCH valide trouve'}"}
+                return {"success": False, "stdout": f"Aucun remplacement effectue.\nErreurs :\n" + '\n'.join(f'  - {e}' for e in errors)}
 
-            # Ecrire le fichier modifie
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(modified)
 
             msg = f"Replace: {replacements_done} bloc(s) remplace(s) dans {file_path}"
             if errors:
-                msg += f" | Erreurs ignorees: {'; '.join(errors)}"
+                msg += f"\nBlocs ignores :\n" + '\n'.join(f'  - {e}' for e in errors)
+
             if file_path.suffix in [".py", ".sh"]:
                 val = self.validate_code(str(file_path))
                 if not val["success"]:
-                    # Restaurer la sauvegarde si erreur de syntaxe
                     with open(file_path, "w", encoding="utf-8") as f:
                         f.write(original)
-                    return {"success": False, "stdout": f"Erreur de syntaxe apres replace - modifications annulees. Verifiez les blocs."}
+                    return {"success": False, "stdout": f"Erreur de syntaxe apres replace - modifications annulees."}
+
             return {"success": True, "stdout": msg}
         except Exception as e:
             return {"success": False, "stdout": str(e)}
+
+    # =====================================================================
+    # FIN DU NOUVEAU SYSTEME REPLACE
+    # =====================================================================
 
     def _is_text_file(self, path):
         try:
@@ -322,50 +450,100 @@ class ActionExecutor:
 
     def update_tracker(self, project_path, task, status):
         try:
-            root = self.resolve_path(project_path)
+            # Créer à la racine du projet, pas dans le workspace
+            root = Path(".").resolve()
             todo_file = root / "todo.md"
             json_file = root / "projets.json"
+            
             data = {}
             if json_file.exists():
                 with open(json_file, "r") as f:
                     data = json.load(f)
+            
             data[task] = {"status": status, "updated": datetime.now().isoformat()}
             with open(json_file, "w") as f:
                 json.dump(data, f, indent=4)
+                
             with open(todo_file, "w") as f:
                 f.write("# Taches du Projet\n\n")
                 for t, info in data.items():
                     mark = "x" if info["status"] == "done" else " "
                     f.write(f"- [{mark}] {t} ({info['status']})\n")
-            return {"success": True, "stdout": f"Tracker mis a jour : {task}"}
+            return {"success": True, "stdout": f"Tracker mis a jour : {task} dans {root}"}
         except Exception as e:
             return {"success": False, "stdout": str(e)}
 
-    def apply_patch(self, patch_content):
-        """Applique un diff généré par l'IA via la commande système 'patch'."""
+    def list_skills(self):
         try:
-            patch_file = self.workspace_root / "temp_patch.diff"
-            clean_patch = self._extract_action_content(patch_content)
+            from src.core.skills_manager import SkillManager
+            mgr = SkillManager()
+            skills = mgr.list_installed()
+            if not skills:
+                return {"success": True, "stdout": "Aucun skill additionnel installe dans tools_library/."}
             
-            with open(patch_file, "w", encoding="utf-8") as f:
-                f.write(clean_patch)
+            output = "SKILLS INSTALLES :\n"
+            output += "-" * 60 + "\n"
+            for s in skills:
+                output += f"Nom: {s['name']} (v{s['version']})\n"
+                output += f"Description: {s['description']}\n"
+                output += f"Dossier: tools_library/{s['name']}\n"
+                output += "-" * 60 + "\n"
+            return {"success": True, "stdout": output}
+        except Exception as e:
+            return {"success": False, "stdout": f"Erreur lors du listage des skills: {str(e)}"}
+
+    def mcp_call(self, server_cmd, tool_name, args_json):
+        try:
+            from src.core.mcp_client import SimpleMCPClient
+            import json
+            # Note: Pour une implémentation réelle, on devrait maintenir une liste 
+            # de clients MCP actifs. Ici on en instancie un au vol pour le test.
+            client = SimpleMCPClient(server_cmd, []) 
+            args = json.loads(args_json)
+            result = client.call_tool(tool_name, args)
+            client.close()
+            return {"success": True, "stdout": str(result)}
+        except Exception as e:
+            return {"success": False, "stdout": f"Erreur MCP: {str(e)}"}
+
+    def list_agents(self):
+        from src.core.default_commands import ACTIVE_AGENTS
+        if not ACTIVE_AGENTS:
+            return {"success": True, "stdout": "Aucun agent enregistre."}
+        return {"success": True, "stdout": f"Agents disponibles : {', '.join(ACTIVE_AGENTS.keys())}"}
+
+    def delegate_task(self, content):
+        from src.core.default_commands import ACTIVE_AGENTS
+        try:
+            p = content.split("|", 1)
+            name, task = p[0].strip(), p[1].strip()
+            if name not in ACTIVE_AGENTS:
+                return {"success": False, "stdout": f"Agent '{name}' inconnu."}
             
-            cmd = ["patch", "-p0", "-N", "--fuzz=2", "--input", str(patch_file)]
-            result = subprocess.run(cmd, capture_output=True, text=True, cwd=self.workspace_root)
-            
-            if patch_file.exists():
-                patch_file.unlink()
-            
-            if result.returncode == 0:
-                return {"success": True, "stdout": "Patch appliqué avec succès."}
-            else:
-                return {"success": False, "stdout": f"Erreur lors de l'application du patch:\n{result.stderr}"}
+            # Utilisation de la méthode send_message de l'agent
+            response = ACTIVE_AGENTS[name].send_message(task)
+            return {"success": True, "stdout": f"Reponse de {name} : {response}"}
         except Exception as e:
             return {"success": False, "stdout": str(e)}
+
+    def check_reports(self):
+        outbox = self.workspace_root / "tasks" / "outbox"
+        if not outbox.exists():
+            return {"success": True, "stdout": "Dossier outbox inexistant."}
+        reports = [f.name for f in outbox.glob("*.json")]
+        if not reports:
+            return {"success": True, "stdout": "Aucun rapport en attente."}
+        return {"success": True, "stdout": f"Rapports disponibles : {', '.join(reports)}"}
 
     def execute_action(self, action_type, content):
         try:
-            if action_type == "bash":
+            if action_type == "list_agents":
+                yield self.list_agents()
+            elif action_type == "delegate_task":
+                yield self.delegate_task(content)
+            elif action_type == "check_reports":
+                yield self.check_reports()
+            elif action_type == "bash":
                 p = content.split("|", 1)
                 yield from self.execute_bash_live(p[1].strip(), p[0].strip().lower() == "asynchrone")
             elif action_type == "write":
@@ -374,8 +552,14 @@ class ActionExecutor:
             elif action_type == "append":
                 p = content.split("|", 1)
                 yield self.smart_write(p[0].strip(), p[1], "a")
-            elif action_type == "patch":
-                yield self.apply_patch(content)
+            elif action_type == "replace":
+                lines = content.strip().split("\n", 1)
+                if len(lines) < 2:
+                    yield {"success": False, "stdout": "Format replace invalide. Attendu: fichier\\n<<<<<<< SEARCH..."}
+                else:
+                    file_path = lines[0].strip()
+                    replace_content = lines[1] if len(lines) > 1 else ""
+                    yield self.replace_file(file_path, replace_content)
             elif action_type == "read":
                 p = [x.strip() for x in content.split("|") if x.strip()]
                 if not p:
@@ -384,6 +568,11 @@ class ActionExecutor:
                     yield self.read_file(p)
             elif action_type == "list_dir":
                 yield self.list_dir(content)
+            elif action_type == "skills_list":
+                yield self.list_skills()
+            elif action_type == "mcp_call":
+                p = content.split("|")
+                yield self.mcp_call(p[0].strip(), p[1].strip(), p[2].strip())
             elif action_type == "validate":
                 yield self.validate_code(content)
             elif action_type == "html_to_pdf":
