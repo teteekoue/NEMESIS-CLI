@@ -19,8 +19,9 @@ jobs:
             apt-get update
             apt-get install -y python3 python3-pip python3-venv dpkg gcc libc6-dev
             
-            # Nettoyage des builds précédents
+            # Nettoyage et préparation
             rm -rf build dist venv
+            mkdir -p tools_library  # Garantir l'existence pour PyInstaller
             
             python3 -m venv venv
             source venv/bin/activate
@@ -36,10 +37,9 @@ jobs:
               --hidden-import prompt_toolkit \
               --hidden-import prompt_toolkit.filters \
               --hidden-import prompt_toolkit.key_binding \
+              --hidden-import yaml \
               --collect-all rich \
               --collect-all prompt_toolkit \
-              --collect-all ddgs \
-              --collect-all yaml \
               agent_modular.py
             
             # Déplacement vers la structure de package
