@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from groq import Groq
+from src.core.utils import get_resource_path
 
 class AgentClient:
     def __init__(self, name: str, api_key: str):
@@ -10,7 +11,7 @@ class AgentClient:
 
     def send_message(self, message: str, role="user") -> str:
         # Initialisation : Injection forcée du prompt système en index 0
-        p_path = Path("agent_subordinate_prompt.txt")
+        p_path = get_resource_path("agent_subordinate_prompt.txt")
         system_content = p_path.read_text() if p_path.exists() else ""
         
         # Gestion propre de l'historique

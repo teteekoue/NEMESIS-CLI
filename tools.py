@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 """Module d'execution d'actions pour l'agent CLI"""
-import os, subprocess, sys, json, signal, time, shutil, re
+import os, subprocess, sys, json, signal, time, re, builtins, requests
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Generator
 from uploader import FileUploader
 
 class ActionExecutor:
-    def __init__(self, workspace="./workspace", bridge=None):
+    def __init__(self, workspace="./workspace", bridge=None, steel_api_key=None):
         self.workspace_root = Path(workspace).resolve()
         if not self.workspace_root.exists():
             self.workspace_root.mkdir(parents=True, exist_ok=True)
         self.bridge = bridge
         self.uploader = FileUploader()
         self.processes = {}
+        # Configuration Steel
+        self.api_key = steel_api_key
+        self.api_base = "https://api.steel.dev/v1"
+        self.session_id = None
+
 
     def resolve_path(self, path):
         p = Path(path.strip())
@@ -24,17 +29,39 @@ class ActionExecutor:
             target = self.resolve_path(path)
             if not target.is_dir():
                 return {"success": False, "stdout": "Erreur: Dossier non trouve"}
-            result = subprocess.run(["tree", "-L", "2", str(target)], capture_output=True, text=True)
-            return {"success": result.returncode == 0, "stdout": result.stdout if result.returncode == 0 else result.stderr}
+            
+            output = f"{target.name}/\n"
+            
+            # Level 1
+            try:
+                items = sorted(target.iterdir())
+                for item in items:
+                    output += f"├── {item.name}{'/' if item.is_dir() else ''}\n"
+                    
+                    # Level 2
+                    if item.is_dir():
+                        try:
+                            subitems = sorted(item.iterdir())
+                            for subitem in subitems:
+                                output += f"│   ├── {subitem.name}{'/' if subitem.is_dir() else ''}\n"
+                        except PermissionError:
+                            output += "│   └── [Accès refusé]\n"
+            except PermissionError:
+                output += "[Accès refusé]\n"
+                
+            return {"success": True, "stdout": output}
         except Exception as e:
             return {"success": False, "stdout": str(e)}
 
     def execute_bash_live(self, command, async_mode=False):
         if async_mode:
-            log_path = self.workspace_root / f"proc_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+            log_dir = self.workspace_root / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_filename = f"proc_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+            log_path = log_dir / log_filename
             proc = subprocess.Popen(f"{command} > '{log_path}' 2>&1", shell=True, executable="/bin/bash", preexec_fn=os.setsid, cwd=self.workspace_root)
             self.processes[proc.pid] = {"cmd": command, "log": str(log_path), "start": datetime.now().isoformat()}
-            yield {"success": True, "stdout": f"PID {proc.pid} lance en arriere-plan.\nLogs: {log_path.name}"}
+            yield {"success": True, "stdout": f"PID {proc.pid} lance en arriere-plan.\nLogs accessibles dans: logs/{log_filename}"}
         else:
             full_output = []
             process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, executable="/bin/bash", cwd=self.workspace_root)
@@ -113,7 +140,7 @@ class ActionExecutor:
         if m == 0 or n == 0:
             return 0.0
         # Matrice optimisee (une seule ligne)
-        prev = list(range(n + 1))
+        prev = builtins.list(range(n + 1))
         curr = [0] * (n + 1)
         for i in range(1, m + 1):
             curr[0] = i
@@ -400,7 +427,7 @@ class ActionExecutor:
 
     def cleanup_logs(self):
         count = 0
-        for pid, info in list(self.processes.items()):
+        for pid, info in builtins.list(self.processes.items()):
             try:
                 os.kill(pid, 0)
             except OSError:
@@ -492,20 +519,6 @@ class ActionExecutor:
         except Exception as e:
             return {"success": False, "stdout": f"Erreur lors du listage des skills: {str(e)}"}
 
-    def mcp_call(self, server_cmd, tool_name, args_json):
-        try:
-            from src.core.mcp_client import SimpleMCPClient
-            import json
-            # Note: Pour une implémentation réelle, on devrait maintenir une liste 
-            # de clients MCP actifs. Ici on en instancie un au vol pour le test.
-            client = SimpleMCPClient(server_cmd, []) 
-            args = json.loads(args_json)
-            result = client.call_tool(tool_name, args)
-            client.close()
-            return {"success": True, "stdout": str(result)}
-        except Exception as e:
-            return {"success": False, "stdout": f"Erreur MCP: {str(e)}"}
-
     def list_agents(self):
         from src.core.default_commands import ACTIVE_AGENTS
         if not ACTIVE_AGENTS:
@@ -535,9 +548,85 @@ class ActionExecutor:
             return {"success": True, "stdout": "Aucun rapport en attente."}
         return {"success": True, "stdout": f"Rapports disponibles : {', '.join(reports)}"}
 
+    def execute_web_search(self, query):
+        try:
+            from ddgs import DDGS
+            with DDGS() as ddgs:
+                results = list(ddgs.text(query, max_results=5))
+                output = f"Résultats pour '{query}':\n\n"
+                for i, r in enumerate(results, 1):
+                    output += f"{i}. {r['title']}\n   URL: {r['href']}\n   Snippet: {r['body']}\n\n"
+            return {"success": True, "stdout": output}
+        except Exception as e:
+            return {"success": False, "stdout": f"Erreur de recherche: {str(e)}"}
+
+    def _ensure_session(self):
+        if not self.session_id:
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "NemesisCLI/2.0"
+            }
+            payload = {"useStealth": True}
+            try:
+                resp = requests.post(f"{self.api_base}/sessions", headers=headers, json=payload)
+                
+                if resp.status_code not in [200, 201]:
+                    raise Exception(f"Steel API returned {resp.status_code}: {resp.text}")
+                
+                try:
+                    data = resp.json()
+                except json.JSONDecodeError:
+                    raise Exception(f"Failed to parse JSON response: {resp.text}")
+                
+                self.session_id = data.get("id")
+                if not self.session_id:
+                    raise Exception(f"No session ID found in response: {data}")
+            except requests.exceptions.RequestException as e:
+                raise Exception(f"Steel API connection error: {str(e)}")
+
+    def web_open(self, url):
+        try:
+            self._ensure_session()
+            headers = {"Authorization": f"Bearer {self.api_key}"}
+            resp = requests.post(f"{self.api_base}/sessions/{self.session_id}/navigate", 
+                                 headers=headers, json={"url": url})
+            return {"success": True, "stdout": f"Page chargée: {url}\n{resp.json().get('content', '')}"}
+        except Exception as e:
+            return {"success": False, "stdout": f"Erreur navigation: {str(e)}"}
+
+    def web_fill(self, selector, value):
+        try:
+            self._ensure_session()
+            headers = {"Authorization": f"Bearer {self.api_key}"}
+            resp = requests.post(f"{self.api_base}/sessions/{self.session_id}/act", 
+                                 headers=headers, json={"action": "fill", "selector": selector, "value": value})
+            return {"success": True, "stdout": "Action remplissage exécutée."}
+        except Exception as e:
+            return {"success": False, "stdout": f"Erreur formulaire: {str(e)}"}
+
+    def web_submit(self, selector):
+        try:
+            self._ensure_session()
+            headers = {"Authorization": f"Bearer {self.api_key}"}
+            resp = requests.post(f"{self.api_base}/sessions/{self.session_id}/act", 
+                                 headers=headers, json={"action": "click", "selector": selector})
+            return {"success": True, "stdout": f"Formulaire soumis."}
+        except Exception as e:
+            return {"success": False, "stdout": f"Erreur soumission: {str(e)}"}
+
     def execute_action(self, action_type, content):
         try:
-            if action_type == "list_agents":
+            if action_type == "web_open":
+                yield self.web_open(content.strip())
+            elif action_type == "web_fill":
+                p = content.split("|", 1)
+                yield self.web_fill(p[0].strip(), p[1].strip())
+            elif action_type == "web_submit":
+                yield self.web_submit(content.strip())
+            elif action_type == "web_search":
+                yield self.execute_web_search(content.strip())
+            elif action_type == "list_agents":
                 yield self.list_agents()
             elif action_type == "delegate_task":
                 yield self.delegate_task(content)
@@ -570,9 +659,6 @@ class ActionExecutor:
                 yield self.list_dir(content)
             elif action_type == "skills_list":
                 yield self.list_skills()
-            elif action_type == "mcp_call":
-                p = content.split("|")
-                yield self.mcp_call(p[0].strip(), p[1].strip(), p[2].strip())
             elif action_type == "validate":
                 yield self.validate_code(content)
             elif action_type == "html_to_pdf":
@@ -593,7 +679,7 @@ class ActionExecutor:
             elif action_type == "cleanup_logs":
                 yield self.cleanup_logs()
             elif action_type == "stop_all":
-                for pid in list(self.processes.keys()):
+                for pid in builtins.list(self.processes.keys()):
                     os.kill(pid, signal.SIGTERM)
                 self.processes.clear()
                 yield {"success": True, "stdout": "Tout est arrete."}
@@ -604,4 +690,5 @@ class ActionExecutor:
 
 def create_executor_from_config(config, bridge=None):
     workspace = config.get("security", {}).get("workspace", "./workspace")
-    return ActionExecutor(workspace=workspace, bridge=bridge)
+    steel_api_key = config.get("steel", {}).get("api_key")
+    return ActionExecutor(workspace=workspace, bridge=bridge, steel_api_key=steel_api_key)

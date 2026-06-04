@@ -12,6 +12,8 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.styles import Style as PtStyle
 
+from prompt_toolkit.formatted_text import ANSI, FormattedText
+
 class SlashCompleter(Completer):
     def get_completions(self, document, complete_event):
         text = document.text
@@ -19,10 +21,11 @@ class SlashCompleter(Completer):
             query = text[1:].lower()
             for cmd in registry.list_commands():
                 if cmd.name.lower().startswith(query):
+                    # Utilisation d'un format simple pour éviter les erreurs HTML
                     yield Completion(
                         cmd.name, 
                         start_position=-len(query),
-                        display=HTML(f'<style fg="magenta">/{cmd.name}</style> <style fg="grey">{cmd.description}</style>')
+                        display=f"/{cmd.name} - {cmd.description}"
                     )
 
 class Composer:
@@ -45,24 +48,24 @@ class Composer:
             complete_while_typing=True
         )
         
+        # Réduction de la taille du frame pour laisser de la place aux menus
         self.frame = Frame(
             self.input_area,
-            title="Entrée de Commande",
+            title="NEMESIS Input",
+            height=3, 
         )
         
-        # Le container flottant pour le menu de complétion
         self.root_container = FloatContainer(
             self.frame,
             floats=[
                 Float(
                     xcursor=True,
                     ycursor=True,
-                    content=CompletionsMenu(max_height=10),
+                    content=CompletionsMenu(max_height=5),
                 )
             ],
         )
         
-        # Key bindings pour quitter/soumettre
         self.kb = KeyBindings()
         @self.kb.add('c-c')
         def _(event): event.app.exit(result=None)
@@ -73,7 +76,8 @@ class Composer:
             layout=Layout(self.root_container),
             key_bindings=self.kb,
             full_screen=False,
-            mouse_support=True
+            mouse_support=True,
+            style=self.pt_style
         )
 
     def display_help_overlay(self):

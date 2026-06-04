@@ -1,5 +1,5 @@
 bridge:
-  host: 192.168.1.67
+  host: 192.168.1.78
   port: 8080
 security:
   workspace: ./workspace
