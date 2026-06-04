@@ -60,17 +60,25 @@ graph TD
 
 ## ⚙️ Installation
 
+### Option 1 : Installation du binaire (Recommandé)
+Vous pouvez installer le paquet directement via l'URL de la dernière release :
+
+```bash
+curl -LO https://github.com/teteekoue/NEMESIS-CLI/releases/latest/download/nemesis-cli_2.0.0_i386.deb && sudo apt install ./nemesis-cli_2.0.0_i386.deb
+```
+
+### Option 2 : Installation depuis les sources
 ```bash
 # 1. Cloner le dépôt
-git clone [URL_DU_PROJET]
-cd nemesis-cli
+git clone https://github.com/teteekoue/NEMESIS-CLI
+cd NEMESIS-CLI
 
 # 2. Lancer le script d'installation
 chmod +x install.sh
 ./install.sh
 
 # 3. Lancer l'agent
-./nemesis-cli2
+./nemesis-cli
 ```
 
 ---
