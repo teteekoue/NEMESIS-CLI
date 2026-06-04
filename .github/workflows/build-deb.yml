@@ -14,9 +14,15 @@ jobs:
       
       - name: Build in 32-bit Docker
         run: |
-          docker run --rm -v ${{ github.workspace }}:/app -w /app i386/debian:bullseye /bin/bash -c "
-            apt-get update && apt-get install -y python3.10 python3.10-venv python3.10-dev dpkg gcc libc6-dev
-            python3.10 -m venv venv
+          docker run --rm -v ${{ github.workspace }}:/app -w /app i386/debian:bookworm /bin/bash -c "
+            set -e  # Arrêter immédiatement en cas d'erreur
+            apt-get update
+            apt-get install -y python3 python3-pip python3-venv dpkg gcc libc6-dev
+            
+            # Nettoyage des builds précédents
+            rm -rf build dist venv
+            
+            python3 -m venv venv
             source venv/bin/activate
             pip install --upgrade pip
             pip install pyinstaller -r requirements.txt
