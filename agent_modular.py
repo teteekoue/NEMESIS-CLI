@@ -6,6 +6,9 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
+# Ajout du chemin racine pour les imports si nécessaire
+sys.path.append(os.path.abspath("."))
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
@@ -13,18 +16,15 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.text import Text
 from rich.prompt import Prompt
 
-# Ajout du chemin src pour les imports
-sys.path.append(os.path.abspath("."))
+from nemesis_cli.src.ui.theme import NEMESIS_THEME, UIColors
+from nemesis_cli.src.ui.header import get_header
+from nemesis_cli.src.ui.composer import Composer
+from nemesis_cli.src.core.commands import registry
+from nemesis_cli.src.core.utils import get_resource_path, ensure_workspace_structure
+import nemesis_cli.src.core.default_commands
 
-from src.ui.theme import NEMESIS_THEME, UIColors
-from src.ui.header import get_header
-from src.ui.composer import Composer
-from src.core.commands import registry
-from src.core.utils import get_resource_path, ensure_workspace_structure
-import src.core.default_commands 
-
-from bridge_client import create_client_from_config
-from tools import create_executor_from_config
+from nemesis_cli.bridge_client import create_client_from_config
+from nemesis_cli.tools import create_executor_from_config
 
 class NemesisApp:
     def __init__(self, debug: bool = False):
@@ -114,7 +114,7 @@ class NemesisApp:
         return f"FEEDBACK:\nAction: {action['type']}\nSuccès: {res.get('success', False)}\nOutput:\n{output}"
 
     def _process_cycle(self, message: str):
-        from src.core.default_commands import increment_message_count
+        from nemesis_cli.src.core.default_commands import increment_message_count
         increment_message_count()
         current_input = message
         iteration = 0

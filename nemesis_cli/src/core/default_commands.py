@@ -7,9 +7,9 @@ import subprocess
 import shutil
 from pathlib import Path
 from datetime import datetime
-from src.core.commands import registry
-from src.core.skills_manager import SkillManager
-from src.core.utils import ensure_workspace_structure
+from nemesis_cli.src.core.commands import registry
+from nemesis_cli.src.core.skills_manager import SkillManager
+from nemesis_cli.src.core.utils import ensure_workspace_structure
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -29,14 +29,14 @@ def increment_message_count():
 
 @registry.register("help", "Affiche la liste des commandes disponibles")
 def help_command():
-    from src.ui.composer import Composer
+    from nemesis_cli.src.ui.composer import Composer
     comp = Composer(console)
     comp.display_help_overlay()
 
 @registry.register("clear", "Efface l'ecran du terminal")
 def clear_command():
     console.clear()
-    from src.ui.header import get_header
+    from nemesis_cli.src.ui.header import get_header
     console.print(get_header("2.0.0-MODULAR"))
 
 @registry.register("exit", "Quitte l'application")
@@ -76,7 +76,7 @@ def config_command():
 def about_command():
     text = Text.assemble(
         ("NEMESIS CLI\n", "bold bright_cyan"),
-        ("L'agent autonome de codage et d'administration Linux.\n\n", "italic white"),
+        ("L'agent de codage à votre portée (Windows).\n\n", "italic white"),
         ("Version : ", "dim"), ("2.0.0-MODULAR\n", "bold white"),
         ("Auteur : ", "dim"), ("Nemesis Team\n", "white"),
         ("\nInspire par le design de Gemini CLI.", "grey50")
@@ -109,12 +109,12 @@ def doctor_command():
     table.add_column("Détails", style="dim")
 
     # 1. Vérification des dépendances système
-    tools = {
+    tools_check = {
         "git": "Requis pour installer des skills",
         "powershell.exe": "Shell par défaut pour l'agent"
     }
     
-    for tool, desc in tools.items():
+    for tool, desc in tools_check.items():
         path = shutil.which(tool)
         status = "[green]✔ OK[/green]" if path else "[red]✘ MANQUANT[/red]"
         table.add_row(tool, status, desc)
@@ -125,7 +125,7 @@ def doctor_command():
     if config_path.exists():
         with open(config_path, 'r') as f:
             cfg = yaml.safe_load(f)
-        from bridge_client import create_client_from_config
+        from nemesis_cli.bridge_client import create_client_from_config
         client = create_client_from_config(cfg)
         try:
             if client.test_connection():
@@ -179,12 +179,11 @@ def param_command():
     
     return "RELOAD_CONFIG"
 
-from src.core.utils import get_resource_path, ensure_workspace_structure
-from src.core.agent_manager import AgentClient
+from nemesis_cli.src.core.utils import get_resource_path, ensure_workspace_structure
+from nemesis_cli.src.core.agent_manager import AgentClient
 import json
 
 # Registre global des agents avec persistence
-# On stocke agents.json à côté de l'exécutable (et non dans le dossier temporaire du binaire)
 BASE_DIR = Path(os.path.abspath(".")).resolve()
 AGENTS_FILE = BASE_DIR / "agents.json"
 ACTIVE_AGENTS: Dict[str, AgentClient] = {}
@@ -209,8 +208,6 @@ load_agents()
 
 @registry.register("agents", "Gere les agents subordonnes pour deleguer des taches")
 def agents_command():
-    from src.core.default_commands import ACTIVE_AGENTS # Import circulaire évité par structure
-    
     while True:
         console.print("\n[bold magenta]Gestion des Agents Subordonnes (Groq)[/bold magenta]")
         console.print(f"Agents : {', '.join(ACTIVE_AGENTS.keys()) if ACTIVE_AGENTS else 'Aucun'}")
@@ -245,9 +242,9 @@ def agents_command():
                 # Exécution automatique si action détectée
                 if "<ACTION" in response:
                     console.print("[system]Action détectée. Exécution en cours...[/system]")
-                    from tools import ActionExecutor
+                    from nemesis_cli.tools import ActionExecutor
                     executor = ActionExecutor()
-                    # Extraction simple (logique à raffiner pour robustesse)
+                    # Extraction simple
                     import re
                     match = re.search(r'<ACTION type="([^"]+)">\n?(.*?)\n?</ACTION>', response, re.S)
                     if match:
@@ -271,11 +268,7 @@ def agents_command():
 
 @registry.register("nemesis.md", "Genere un fichier NEMESIS.md pour le suivi du projet actuel")
 def nemesis_md_command():
-    # Cette commande envoie une instruction spéciale à l'IA via le cycle normal
-    # Pour cela, on a besoin de retourner un message que l'app traitera
     console.print("[yellow]Instruction de generation du NEMESIS.md envoyee a l'IA...[/yellow]")
-    # On simule l'envoi d'un prompt interne
-    # Note: Dans agent_modular.py, on interceptera ce retour pour lancer un process_cycle
     return "PROMPT_INTERNAL: Genere un fichier NEMESIS.md a la racine pour documenter ce projet (objectifs, structure, technologies, etat d'avancement). Utilise l'action 'write'."
 
 @registry.register("skills", "Gere les competences (skills) de l'agent")

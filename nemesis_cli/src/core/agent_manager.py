@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from groq import Groq
-from src.core.utils import get_resource_path
+from nemesis_cli.src.core.utils import get_resource_path
 
 class AgentClient:
     def __init__(self, name: str, api_key: str):
