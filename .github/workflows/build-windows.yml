@@ -30,7 +30,7 @@ jobs:
 
     - name: Build with PyInstaller
       run: |
-        pyinstaller --onefile --name nemesis-cli-win32 --add-data "logo.png;." --add-data "prompt_system.txt;." --add-data "agent_subordinate_prompt.txt;." agent_modular.py
+        pyinstaller --onefile --name nemesis-cli-win32 --paths "." --add-data "logo.png;." --add-data "prompt_system.txt;." --add-data "agent_subordinate_prompt.txt;." agent_modular.py
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
