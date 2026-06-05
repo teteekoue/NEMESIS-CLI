@@ -6,6 +6,9 @@ on:
       - 'windows-version*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -36,7 +39,6 @@ jobs:
         path: dist/nemesis-cli-win32.exe
 
     - name: Create Release
-      if: startsWith(github.ref, 'refs/heads/windows-version')
       uses: softprops/action-gh-release@v2
       with:
         files: dist/nemesis-cli-win32.exe
