@@ -2,7 +2,8 @@ name: Build Windows 32-bit
 
 on:
   push:
-    branches: [ windows-version ]
+    branches:
+      - 'windows-version*'
   workflow_dispatch:
 
 jobs:
@@ -33,3 +34,15 @@ jobs:
       with:
         name: nemesis-cli-windows-32bit
         path: dist/nemesis-cli-win32.exe
+
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/heads/windows-version')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: dist/nemesis-cli-win32.exe
+        tag_name: v2.0.0-win32
+        name: NEMESIS-CLI v2.0.0 Windows 32-bit
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
