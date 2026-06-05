@@ -1,0 +1,35 @@
+name: Build Windows 32-bit
+
+on:
+  push:
+    branches: [ windows-version ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        architecture: 'x86'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+        pip install -r requirements.txt
+
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller --onefile --name nemesis-cli-win32 --add-data "logo.png;." --add-data "prompt_system.txt;." --add-data "agent_subordinate_prompt.txt;." agent_modular.py
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: nemesis-cli-windows-32bit
+        path: dist/nemesis-cli-win32.exe

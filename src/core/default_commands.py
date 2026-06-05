@@ -86,15 +86,13 @@ def about_command():
 @registry.register("tools", "Liste les outils systeme disponibles pour l'agent")
 def tools_command():
     tools_list = [
-        ("bash", "Execution de commandes shell (synchrone/asynchrone)"),
+        ("bash", "Execution de commandes shell PowerShell (synchrone/asynchrone)"),
         ("replace", "Modification intelligente de fichiers par blocs"),
         ("read", "Lecture de fichiers avec partage via lien public"),
         ("write", "Creation ou ecrasement complet de fichiers"),
         ("list_dir", "Exploration de dossiers"),
-        ("validate", "Verification de syntaxe Python/Bash"),
-        ("upload", "Upload de fichiers vers des services publics"),
-        ("html_to_pdf", "Conversion HTML vers PDF"),
-        ("pdf_to_text", "Extraction de texte depuis un PDF")
+        ("validate", "Verification de syntaxe Python"),
+        ("upload", "Upload de fichiers vers des services publics")
     ]
     table = Table(title="Outils Disponibles", border_style="magenta")
     table.add_column("Outil", style="bold magenta")
@@ -113,8 +111,7 @@ def doctor_command():
     # 1. Vérification des dépendances système
     tools = {
         "git": "Requis pour installer des skills",
-        "soffice": "Requis pour les conversions PDF (LibreOffice)",
-        "cat": "Essentiel pour la lecture de fichiers"
+        "powershell.exe": "Shell par défaut pour l'agent"
     }
     
     for tool, desc in tools.items():

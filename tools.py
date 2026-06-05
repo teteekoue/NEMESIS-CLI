@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Module d'execution d'actions pour l'agent CLI"""
-import os, subprocess, sys, json, signal, time, re, builtins, requests
+import os, subprocess, sys, json, signal, time, re, requests
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Generator
@@ -30,20 +30,20 @@ class ActionExecutor:
             if not target.is_dir():
                 return {"success": False, "stdout": "Erreur: Dossier non trouve"}
             
-            output = f"{target.name}/\n"
+            output = f"{target.name}\\\n"
             
             # Level 1
             try:
                 items = sorted(target.iterdir())
                 for item in items:
-                    output += f"├── {item.name}{'/' if item.is_dir() else ''}\n"
+                    output += f"├── {item.name}{'\\' if item.is_dir() else ''}\n"
                     
                     # Level 2
                     if item.is_dir():
                         try:
                             subitems = sorted(item.iterdir())
                             for subitem in subitems:
-                                output += f"│   ├── {subitem.name}{'/' if subitem.is_dir() else ''}\n"
+                                output += f"│   ├── {subitem.name}{'\\' if subitem.is_dir() else ''}\n"
                         except PermissionError:
                             output += "│   └── [Accès refusé]\n"
             except PermissionError:
@@ -54,17 +54,27 @@ class ActionExecutor:
             return {"success": False, "stdout": str(e)}
 
     def execute_bash_live(self, command, async_mode=False):
+        # Utilisation de PowerShell pour Windows
+        # Utiliser une liste pour éviter les problèmes de quoting avec shell=False
+        shell_args = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command]
+
         if async_mode:
             log_dir = self.workspace_root / "logs"
             log_dir.mkdir(parents=True, exist_ok=True)
             log_filename = f"proc_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
             log_path = log_dir / log_filename
-            proc = subprocess.Popen(f"{command} > '{log_path}' 2>&1", shell=True, executable="/bin/bash", preexec_fn=os.setsid, cwd=self.workspace_root)
+
+            # Redirection via PowerShell lui-même pour l'asynchrone
+            async_command = f"{command} | Out-File -FilePath '{log_path}' -Encoding utf8"
+            proc_args = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", async_command]
+
+            # Utilisation de CREATE_NEW_PROCESS_GROUP pour permettre de tuer le processus plus tard
+            proc = subprocess.Popen(proc_args, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP, cwd=self.workspace_root)
             self.processes[proc.pid] = {"cmd": command, "log": str(log_path), "start": datetime.now().isoformat()}
             yield {"success": True, "stdout": f"PID {proc.pid} lance en arriere-plan.\nLogs accessibles dans: logs/{log_filename}"}
         else:
             full_output = []
-            process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, executable="/bin/bash", cwd=self.workspace_root)
+            process = subprocess.Popen(shell_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=self.workspace_root)
             start = time.time()
             while True:
                 line = process.stdout.readline()
@@ -74,7 +84,7 @@ class ActionExecutor:
                     full_output.append(line)
                     yield {"partial": True, "line": line}
                 if time.time() - start > 300:
-                    process.kill()
+                    process.terminate()
                     yield {"success": False, "stdout": "".join(full_output) + "\n[TIMEOUT] Commande depasse 5 minutes, arretee."}
                     return
             yield {"success": process.returncode == 0, "stdout": "".join(full_output)}
@@ -85,9 +95,9 @@ class ActionExecutor:
             return {"success": False, "stdout": "Fichier inexistant"}
         if target.suffix == ".py":
             result = subprocess.run([sys.executable, "-m", "py_compile", str(target)], capture_output=True, text=True)
+            return {"success": result.returncode == 0, "stdout": result.stdout + result.stderr}
         else:
-            result = subprocess.run(["sh", "-n", str(target)], capture_output=True, text=True)
-        return {"success": result.returncode == 0, "stdout": result.stdout + result.stderr}
+            return {"success": True, "stdout": "Fichier présent."}
 
     def _extract_action_content(self, content):
         pattern = re.compile(r'^```.*?\n(.*?)\n```$', re.DOTALL | re.MULTILINE)
@@ -104,7 +114,7 @@ class ActionExecutor:
             with open(file_path, mode, encoding="utf-8") as f:
                 f.write(clean + "\n")
             msg = f"Fichier ecrit: {file_path} ({len(clean)} caracteres)"
-            if file_path.suffix in [".py", ".sh"]:
+            if file_path.suffix in [".py"]:
                 val = self.validate_code(str(file_path))
                 if not val["success"]:
                     msg += " (attention syntaxe)"
@@ -140,7 +150,7 @@ class ActionExecutor:
         if m == 0 or n == 0:
             return 0.0
         # Matrice optimisee (une seule ligne)
-        prev = builtins.list(range(n + 1))
+        prev = list(range(n + 1))
         curr = [0] * (n + 1)
         for i in range(1, m + 1):
             curr[0] = i
@@ -328,7 +338,7 @@ class ActionExecutor:
             if errors:
                 msg += f"\nBlocs ignores :\n" + '\n'.join(f'  - {e}' for e in errors)
 
-            if file_path.suffix in [".py", ".sh"]:
+            if file_path.suffix in [".py"]:
                 val = self.validate_code(str(file_path))
                 if not val["success"]:
                     with open(file_path, "w", encoding="utf-8") as f:
@@ -411,9 +421,13 @@ class ActionExecutor:
             os.kill(pid, 0)
         except OSError:
             return {"success": True, "stdout": f"PID {pid} termine."}
-        with open(self.processes[pid]["log"], "r") as f:
-            logs = f.readlines()[-20:]
-        return {"success": True, "stdout": f"PID {pid} actif. Logs:\n" + "".join(logs)}
+
+        if os.path.exists(self.processes[pid]["log"]):
+            with open(self.processes[pid]["log"], "r") as f:
+                logs = f.readlines()[-20:]
+            return {"success": True, "stdout": f"PID {pid} actif. Logs:\n" + "".join(logs)}
+        else:
+             return {"success": True, "stdout": f"PID {pid} actif. (Logs non trouvés)"}
 
     def kill_process(self, pid):
         if pid not in self.processes:
@@ -427,7 +441,7 @@ class ActionExecutor:
 
     def cleanup_logs(self):
         count = 0
-        for pid, info in builtins.list(self.processes.items()):
+        for pid, info in list(self.processes.items()):
             try:
                 os.kill(pid, 0)
             except OSError:
@@ -436,34 +450,6 @@ class ActionExecutor:
                     count += 1
                 del self.processes[pid]
         return {"success": True, "stdout": f"Nettoyage : {count} logs supprimes."}
-
-    def execute_pdf_to_text(self, pdf_file_path, output_dir):
-        if not shutil.which("soffice"):
-            return {"success": False, "stdout": "LibreOffice non installe. sudo apt install libreoffice"}
-        try:
-            pdf_path = self.resolve_path(pdf_file_path)
-            output_path = self.resolve_path(output_dir)
-            cmd = f"soffice --headless --convert-to txt:Text --outdir '{output_path}' '{pdf_path}'"
-            subprocess.run(cmd, shell=True, executable="/bin/bash")
-            txt_path = output_path / (pdf_path.stem + ".txt")
-            if txt_path.exists():
-                with open(txt_path, "r") as f:
-                    return {"success": True, "stdout": f.read()}
-            return {"success": False, "stdout": "Echec de l'extraction."}
-        except Exception as e:
-            return {"success": False, "stdout": str(e)}
-
-    def execute_html_to_pdf(self, html_file_path, output_dir):
-        if not shutil.which("soffice"):
-            return {"success": False, "stdout": "LibreOffice non installe. sudo apt install libreoffice"}
-        try:
-            html_path = self.resolve_path(html_file_path)
-            output_path = self.resolve_path(output_dir)
-            cmd = f"soffice --headless --convert-to pdf --outdir '{output_path}' '{html_path}'"
-            subprocess.run(cmd, shell=True, executable="/bin/bash")
-            return {"success": True, "stdout": f"PDF genere dans {output_path}"}
-        except Exception as e:
-            return {"success": False, "stdout": str(e)}
 
     def execute_upload(self, file_path):
         try:
@@ -661,12 +647,6 @@ class ActionExecutor:
                 yield self.list_skills()
             elif action_type == "validate":
                 yield self.validate_code(content)
-            elif action_type == "html_to_pdf":
-                p = content.split("|")
-                yield self.execute_html_to_pdf(p[0].strip(), p[1].strip())
-            elif action_type == "pdf_to_text":
-                p = content.split("|")
-                yield self.execute_pdf_to_text(p[0].strip(), p[1].strip())
             elif action_type == "update_tracker":
                 p = content.split("|")
                 yield self.update_tracker(p[0].strip(), p[1].strip(), p[2].strip())
@@ -679,8 +659,11 @@ class ActionExecutor:
             elif action_type == "cleanup_logs":
                 yield self.cleanup_logs()
             elif action_type == "stop_all":
-                for pid in builtins.list(self.processes.keys()):
-                    os.kill(pid, signal.SIGTERM)
+                for pid in list(self.processes.keys()):
+                    try:
+                        os.kill(pid, signal.SIGTERM)
+                    except:
+                        pass
                 self.processes.clear()
                 yield {"success": True, "stdout": "Tout est arrete."}
             else:
