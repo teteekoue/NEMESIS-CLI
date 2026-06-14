@@ -1,0 +1,8 @@
+venv/
+__pycache__/
+.env
+GEMINI.md
+MEMORY.md
+agents.json
+config.yaml
+workspace/tasks/
