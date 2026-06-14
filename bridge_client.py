@@ -48,6 +48,7 @@ class BridgeClient:
         last_error = ""
         for attempt in range(1, self.max_retries + 1):
             try:
+<<<<<<< HEAD
                 resp = requests.get(f"{self.base_url}/ask", params={'q': message}, timeout=None)
                 job_id = resp.text.strip()
                 
@@ -101,6 +102,22 @@ class BridgeClient:
                 time.sleep(self.retry_delay)
                 continue
         
+=======
+                resp = requests.post(f"{self.base_url}/ask", data={'q': message}, timeout=None)
+                job_id = resp.text.strip()
+
+                while True:
+                    poll_res = requests.get(f"{self.base_url}/result?id={job_id}", timeout=None)
+                    result = poll_res.text.strip()
+                    if result != "STILL_WORKING":
+                        return {'success': True, 'response': self._extract_text(result)}
+                    time.sleep(3)
+            except Exception as e:
+                last_error = str(e)
+                if attempt < self.max_retries:
+                    time.sleep(self.retry_delay)
+                    continue
+>>>>>>> 5380d9a25d4e84c58e2a84c467fbc6e2b0173307
         return {'success': False, 'error': f"Echec apres {self.max_retries} tentatives: {last_error}"}
 
     def upload_file(self, path: str) -> Dict[str, Any]:

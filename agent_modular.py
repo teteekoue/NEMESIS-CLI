@@ -20,6 +20,10 @@ from src.ui.theme import NEMESIS_THEME, UIColors
 from src.ui.header import get_header
 from src.ui.composer import Composer
 from src.core.commands import registry
+<<<<<<< HEAD
+=======
+from src.core.utils import get_resource_path, ensure_workspace_structure
+>>>>>>> 5380d9a25d4e84c58e2a84c467fbc6e2b0173307
 import src.core.default_commands 
 
 from bridge_client import create_client_from_config
@@ -40,18 +44,36 @@ class NemesisApp:
 
     def _load_config(self, force: bool = False):
         if force or not self.config_path.exists():
+<<<<<<< HEAD
             self.console.print("[system]Configuration de la connexion au Bridge...[/system]")
             host = Prompt.ask("IP Bridge", default="192.168.1.67")
             port = Prompt.ask("Port", default="8080")
             self.config = {
                 "bridge": {"host": host, "port": int(port)},
                 "security": {"workspace": "./workspace"}
+=======
+            self.console.print("[system]Configuration Initiale - NEMESIS CLI[/system]")
+            host = Prompt.ask("IP Bridge", default="192.168.1.67")
+            port = Prompt.ask("Port", default="8080")
+            workspace = Prompt.ask("Chemin du Workspace par défaut", default="./workspace")
+            
+            self.config = {
+                "bridge": {"host": host, "port": int(port)},
+                "security": {"workspace": workspace}
+>>>>>>> 5380d9a25d4e84c58e2a84c467fbc6e2b0173307
             }
             with open(self.config_path, "w") as f:
                 yaml.dump(self.config, f)
         else:
             with open(self.config_path, "r") as f:
                 self.config = yaml.safe_load(f)
+<<<<<<< HEAD
+=======
+        
+        # Initialisation de la structure du workspace
+        ws_path = self.config.get("security", {}).get("workspace", "./workspace")
+        ensure_workspace_structure(ws_path)
+>>>>>>> 5380d9a25d4e84c58e2a84c467fbc6e2b0173307
 
     def _handle_interrupt(self):
         now = time.time()
@@ -63,8 +85,14 @@ class NemesisApp:
             self.last_interrupt = now
 
     def _initialize_ai(self):
+<<<<<<< HEAD
         p_path = Path("prompt_system.txt")
         if not p_path.exists():
+=======
+        p_path = get_resource_path("prompt_system.txt")
+        if not p_path.exists():
+            self.console.print(f"[error]Prompt système introuvable : {p_path}[/error]")
+>>>>>>> 5380d9a25d4e84c58e2a84c467fbc6e2b0173307
             return
         
         if Prompt.ask("[bold white]Envoyer le prompt système ?[/bold white]", choices=["o", "n"], default="o") == "n":
@@ -225,7 +253,16 @@ class NemesisApp:
                     cmd = registry.get_command(cmd_name)
                     if cmd:
                         res = cmd.handler()
+<<<<<<< HEAD
                         if isinstance(res, str) and res.startswith("PROMPT_INTERNAL:"):
+=======
+                        if res == "RELOAD_CONFIG":
+                            self._load_config()
+                            self.client = create_client_from_config(self.config)
+                            self.executor = create_executor_from_config(self.config, bridge=self.client)
+                            self.console.print("[success]✔ Configuration rechargée.[/success]")
+                        elif isinstance(res, str) and res.startswith("PROMPT_INTERNAL:"):
+>>>>>>> 5380d9a25d4e84c58e2a84c467fbc6e2b0173307
                             self._process_cycle(res.replace("PROMPT_INTERNAL:", "").strip())
                     else:
                         self.console.print(f"[error]Commande inconnue: /{cmd_name}[/error]")

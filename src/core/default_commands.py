@@ -3,14 +3,27 @@ import sys
 import os
 import yaml
 import time
+<<<<<<< HEAD
+=======
+import subprocess
+import shutil
+>>>>>>> 5380d9a25d4e84c58e2a84c467fbc6e2b0173307
 from pathlib import Path
 from datetime import datetime
 from src.core.commands import registry
 from src.core.skills_manager import SkillManager
+<<<<<<< HEAD
+=======
+from src.core.utils import ensure_workspace_structure
+>>>>>>> 5380d9a25d4e84c58e2a84c467fbc6e2b0173307
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
+<<<<<<< HEAD
+=======
+from rich.prompt import Prompt
+>>>>>>> 5380d9a25d4e84c58e2a84c467fbc6e2b0173307
 
 console = Console()
 skill_mgr = SkillManager()
@@ -99,11 +112,95 @@ def tools_command():
         table.add_row(name, desc)
     console.print(table)
 
+<<<<<<< HEAD
 from src.core.mcp_manager import MCPManager
+=======
+@registry.register("doctor", "Vérifie la santé du système et les dépendances")
+def doctor_command():
+    table = Table(title="Diagnostic Système - NEMESIS CLI", border_style="bright_cyan")
+    table.add_column("Composant", style="cyan")
+    table.add_column("Statut", style="white")
+    table.add_column("Détails", style="dim")
+
+    # 1. Vérification des dépendances système
+    tools = {
+        "git": "Requis pour installer des skills",
+        "soffice": "Requis pour les conversions PDF (LibreOffice)",
+        "cat": "Essentiel pour la lecture de fichiers"
+    }
+    
+    for tool, desc in tools.items():
+        path = shutil.which(tool)
+        status = "[green]✔ OK[/green]" if path else "[red]✘ MANQUANT[/red]"
+        table.add_row(tool, status, desc)
+
+    # 2. Vérification du Bridge
+    config_path = Path("config.yaml")
+    cfg = {}
+    if config_path.exists():
+        with open(config_path, 'r') as f:
+            cfg = yaml.safe_load(f)
+        from bridge_client import create_client_from_config
+        client = create_client_from_config(cfg)
+        try:
+            if client.test_connection():
+                table.add_row("Bridge Connection", "[green]✔ OK[/green]", f"{client.host}:{client.port}")
+            else:
+                table.add_row("Bridge Connection", "[red]✘ ECHEC[/red]", "Bridge injoignable")
+        except:
+            table.add_row("Bridge Connection", "[red]✘ ERREUR[/red]", "Erreur lors du test")
+    
+    # 3. Workspace
+    ws_path = cfg.get("security", {}).get("workspace", "./workspace") if config_path.exists() else "./workspace"
+    ws = Path(ws_path)
+    if ws.exists() and ws.is_dir():
+        table.add_row("Workspace", "[green]✔ OK[/green]", str(ws.resolve()))
+    else:
+        table.add_row("Workspace", "[yellow]! ABSENT[/yellow]", "Sera créé au besoin")
+
+    console.print(table)
+
+@registry.register("param", "Modifie les paramètres de configuration (IP, Port, Workspace)")
+def param_command():
+    config_path = Path("config.yaml")
+    cfg = {}
+    if config_path.exists():
+        with open(config_path, 'r') as f:
+            cfg = yaml.safe_load(f) or {}
+
+    console.print("\n[bold magenta]Configuration des Paramètres[/bold magenta]")
+    
+    # Bridge
+    bridge = cfg.get("bridge", {})
+    new_host = Prompt.ask("IP Bridge", default=bridge.get("host", "192.168.1.67"))
+    new_port = Prompt.ask("Port Bridge", default=str(bridge.get("port", "8080")))
+    
+    # Workspace
+    security = cfg.get("security", {})
+    new_ws = Prompt.ask("Chemin du Workspace", default=security.get("workspace", "./workspace"))
+
+    # Update config
+    cfg["bridge"] = {"host": new_host, "port": int(new_port)}
+    cfg["security"] = {"workspace": new_ws}
+
+    with open(config_path, "w") as f:
+        yaml.dump(cfg, f)
+    
+    # Initialisation du nouveau workspace si nécessaire
+    ensure_workspace_structure(new_ws)
+    
+    console.print("[success]Configuration mise à jour avec succès.[/success]")
+    console.print("[yellow]Note: Certains changements nécessitent un rechargement interne.[/yellow]")
+    
+    return "RELOAD_CONFIG"
+
+from src.core.utils import get_resource_path, ensure_workspace_structure
+>>>>>>> 5380d9a25d4e84c58e2a84c467fbc6e2b0173307
 from src.core.agent_manager import AgentClient
 import json
 
 # Registre global des agents avec persistence
+<<<<<<< HEAD
 AGENTS_FILE = Path("agents.json")
 ACTIVE_AGENTS: Dict[str, AgentClient] = {}
 
@@ -142,6 +239,13 @@ def mcp_command():
         success, msg = mcp_mgr.remove_server(name)
         console.print(f"[success]{msg}[/success]" if success else f"[error]{msg}[/error]")
 
+=======
+# On stocke agents.json à côté de l'exécutable (et non dans le dossier temporaire du binaire)
+BASE_DIR = Path(os.path.abspath(".")).resolve()
+AGENTS_FILE = BASE_DIR / "agents.json"
+ACTIVE_AGENTS: Dict[str, AgentClient] = {}
+
+>>>>>>> 5380d9a25d4e84c58e2a84c467fbc6e2b0173307
 def load_agents():
     if AGENTS_FILE.exists():
         try:

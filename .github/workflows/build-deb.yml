@@ -1,0 +1,57 @@
+name: Build 32-bit DEB
+
+on:
+  push:
+    branches: [ main ]
+  release:
+    types: [ created ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Build in 32-bit Docker
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/app -w /app i386/debian:bookworm /bin/bash -c "
+            set -e  # Arrêter immédiatement en cas d'erreur
+            apt-get update
+            apt-get install -y python3 python3-pip python3-venv dpkg gcc libc6-dev
+            
+            # Nettoyage et préparation
+            rm -rf build dist venv
+            mkdir -p tools_library  # Garantir l'existence pour PyInstaller
+            
+            python3 -m venv venv
+            source venv/bin/activate
+            pip install --upgrade pip
+            pip install pyinstaller -r requirements.txt
+            
+            # Compilation explicite
+            pyinstaller --onefile --name nemesis-cli \
+              --add-data 'src:src' \
+              --add-data 'prompt_system.txt:.' \
+              --add-data 'agent_subordinate_prompt.txt:.' \
+              --add-data 'tools_library:tools_library' \
+              --hidden-import prompt_toolkit \
+              --hidden-import prompt_toolkit.filters \
+              --hidden-import prompt_toolkit.key_binding \
+              --hidden-import yaml \
+              --collect-all rich \
+              --collect-all prompt_toolkit \
+              agent_modular.py
+            
+            # Déplacement vers la structure de package
+            mkdir -p package/usr/bin
+            cp dist/nemesis-cli package/usr/bin/
+            
+            # Construction du paquet
+            dpkg-deb --build package nemesis-cli_2.0.0_i386.deb
+          "
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nemesis-deb-32bit
+          path: nemesis-cli_2.0.0_i386.deb

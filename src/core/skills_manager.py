@@ -8,12 +8,20 @@ import yaml
 import re
 from pathlib import Path
 from rich.console import Console
+<<<<<<< HEAD
+=======
+from src.core.utils import get_resource_path
+>>>>>>> 5380d9a25d4e84c58e2a84c467fbc6e2b0173307
 
 console = Console()
 
 class SkillManager:
     def __init__(self, library_path="tools_library"):
+<<<<<<< HEAD
         self.library_path = Path(library_path)
+=======
+        self.library_path = get_resource_path(library_path)
+>>>>>>> 5380d9a25d4e84c58e2a84c467fbc6e2b0173307
         self.library_path.mkdir(parents=True, exist_ok=True)
 
     def _get_skill_metadata(self, skill_dir):
