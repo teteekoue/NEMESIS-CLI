@@ -1,9 +1,7 @@
 import os
 from pathlib import Path
 from groq import Groq
-=======
 from src.core.utils import get_resource_path
->>>>>>> 5380d9a25d4e84c58e2a84c467fbc6e2b0173307
 
 class AgentClient:
     def __init__(self, name: str, api_key: str):
