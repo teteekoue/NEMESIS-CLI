@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  build-amd64:
+ build-amd64:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,15 +20,13 @@ jobs:
       - name: Build amd64 .deb
         run: |
           docker run --rm \
-            -e NEMESIS_VERSION=3.0.0 \
-            -e DEB_ARCH=amd64 \
-            -e PYINST_ARCH=x86_64 \
+            -e NEMESIS_ROOT=/src \
             -v "$PWD":/src \
-            python:3.12-slim \
+            python:3.12 \
             bash -c '
-              pip install --quiet pyinstaller rich prompt_toolkit httpx pydantic pyyaml pyperclip dpkg \
-              && apt-get update -qq && apt-get install -y -qq dpkg \
-              && python3 /src/scripts/ci_build.py
+              apt-get update -qq && apt-get install -y -qq dpkg binutils > /dev/null 2>&1
+              pip install --quiet pyinstaller rich prompt_toolkit httpx pydantic pyyaml pyperclip
+              DEB_ARCH=amd64 PYINST_ARCH=x86_64 python3 /src/scripts/ci_build.py
             '
 
       - uses: actions/upload-artifact@v4
@@ -41,22 +39,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Enable i386 Docker
-        run: docker run --rm --platform linux/386 i386/python:3.12-slim echo "i386 OK"
-
       - name: Build i386 .deb
         run: |
           docker run --rm \
             --platform linux/386 \
-            -e NEMESIS_VERSION=3.0.0 \
-            -e DEB_ARCH=i386 \
-            -e PYINST_ARCH=x86 \
+            -e NEMESIS_ROOT=/src \
             -v "$PWD":/src \
-            i386/python:3.12-slim \
+            i386/python:3.12 \
             bash -c '
-              pip install --quiet pyinstaller rich prompt_toolkit httpx pydantic pyyaml pyperclip \
-              && apt-get update -qq && apt-get install -y -qq dpkg \
-              && python3 /src/scripts/ci_build.py
+              apt-get update -qq && apt-get install -y -qq dpkg binutils gcc > /dev/null 2>&1
+              pip install --quiet pyinstaller rich prompt_toolkit httpx pydantic pyyaml pyperclip
+              DEB_ARCH=i386 PYINST_ARCH=x86 python3 /src/scripts/ci_build.py
             '
 
       - uses: actions/upload-artifact@v4
