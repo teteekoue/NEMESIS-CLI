@@ -12,11 +12,10 @@ permissions:
   contents: write
 
 jobs:
- build-amd64:
+  build-amd64:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Build amd64 .deb
         run: |
           docker run --rm \
@@ -28,7 +27,6 @@ jobs:
               pip install --quiet pyinstaller rich prompt_toolkit httpx pydantic pyyaml pyperclip
               DEB_ARCH=amd64 PYINST_ARCH=x86_64 python3 /src/scripts/ci_build.py
             '
-
       - uses: actions/upload-artifact@v4
         with:
           name: nemesis-cli_amd64
@@ -38,7 +36,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Build i386 .deb
         run: |
           docker run --rm \
@@ -51,7 +48,6 @@ jobs:
               pip install --quiet pyinstaller rich prompt_toolkit httpx pydantic pyyaml pyperclip
               DEB_ARCH=i386 PYINST_ARCH=x86 python3 /src/scripts/ci_build.py
             '
-
       - uses: actions/upload-artifact@v4
         with:
           name: nemesis-cli_i386
@@ -66,7 +62,6 @@ jobs:
         with:
           path: release/
       - run: find release/ -name '*.deb' -ls
-
       - uses: softprops/action-gh-release@v2
         with:
           files: release/**/*.deb
