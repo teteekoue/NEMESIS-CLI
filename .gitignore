@@ -11,7 +11,8 @@ build/
 
 # PyInstaller
 *.spec.work/
-*.build/
+build_*/
+dist_*/
 
 # IDE
 .idea/
@@ -27,10 +28,6 @@ Thumbs.db
 # NEMESIS
 __nemesis_session/
 *.log
-
-# Build artifacts
-*.deb
-debuild/
 
 # Virtual env
 .venv/

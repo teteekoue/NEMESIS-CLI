@@ -1,0 +1,80 @@
+name: Build .deb Packages
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-amd64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build amd64 .deb
+        run: |
+          docker run --rm \
+            -e NEMESIS_VERSION=3.0.0 \
+            -e DEB_ARCH=amd64 \
+            -e PYINST_ARCH=x86_64 \
+            -v "$PWD":/src \
+            python:3.12-slim \
+            bash -c '
+              pip install --quiet pyinstaller rich prompt_toolkit httpx pydantic pyyaml pyperclip dpkg \
+              && apt-get update -qq && apt-get install -y -qq dpkg \
+              && python3 /src/scripts/ci_build.py
+            '
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nemesis-cli_amd64
+          path: dist_amd64/*.deb
+
+  build-i386:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable i386 Docker
+        run: docker run --rm --platform linux/386 i386/python:3.12-slim echo "i386 OK"
+
+      - name: Build i386 .deb
+        run: |
+          docker run --rm \
+            --platform linux/386 \
+            -e NEMESIS_VERSION=3.0.0 \
+            -e DEB_ARCH=i386 \
+            -e PYINST_ARCH=x86 \
+            -v "$PWD":/src \
+            i386/python:3.12-slim \
+            bash -c '
+              pip install --quiet pyinstaller rich prompt_toolkit httpx pydantic pyyaml pyperclip \
+              && apt-get update -qq && apt-get install -y -qq dpkg \
+              && python3 /src/scripts/ci_build.py
+            '
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nemesis-cli_i386
+          path: dist_i386/*.deb
+
+  release:
+    needs: [build-amd64, build-i386]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release/
+      - run: find release/ -name '*.deb' -ls
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/**/*.deb
+          generate_release_notes: true
