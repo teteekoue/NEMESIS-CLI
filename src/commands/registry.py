@@ -26,7 +26,13 @@ class CommandRegistry:
         return self._commands.get(name)
 
     def list_all(self):
-        return list(set(self._commands.values()))
+        seen = set()
+        result = []
+        for cmd in self._commands.values():
+            if cmd.name not in seen:
+                seen.add(cmd.name)
+                result.append(cmd)
+        return result
 
     def list_by_category(self):
         cats = {}
