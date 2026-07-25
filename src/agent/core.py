@@ -36,17 +36,19 @@ class NemesisAgent:
                                     for tc in response.tool_calls]
                 })
                 for tc in response.tool_calls:
-                    if callback: callback("tool_call", {"name": tc["name"], "args_preview": tc["arguments"][:100]})
+                    if callback:
+                        callback("tool_call", {"name": tc["name"], "args_preview": tc["arguments"][:100]})
                     try:
                         args = json.loads(tc["arguments"]) if isinstance(tc["arguments"], str) else tc["arguments"]
                     except json.JSONDecodeError:
                         args = {}
                     result = self.tool_executor.execute(tc["name"], args)
                     result_str = json.dumps(result, ensure_ascii=False)
-                    if len(result_str) > 100000: result_str = result_str[:100000] + "
-[TRONQUÉ]"
+                    if len(result_str) > 100000:
+                        result_str = result_str[:100000] + "\n[TRONQUÉ]"
                     self.messages.append({"role": "tool", "tool_call_id": tc["id"], "content": result_str})
-                    if callback: callback("tool_result", {"name": tc["name"], "success": result.get("success")})
+                    if callback:
+                        callback("tool_result", {"name": tc["name"], "success": result.get("success")})
                 continue
             if response.content:
                 self.messages.append({"role": "assistant", "content": response.content})
@@ -77,7 +79,8 @@ class NemesisAgent:
             self.messages[0]["content"] = prompt
 
     def compact_history(self, summary: str = None):
-        if len(self.messages) <= 6: return
+        if len(self.messages) <= 6:
+            return
         if summary is None:
             summary = "[Historique compacté - échanges précédents résumés]"
         self.messages = [
@@ -87,6 +90,7 @@ class NemesisAgent:
         ] + self.messages[-4:]
 
     def _accumulate_usage(self, usage: dict):
-        if not usage: return
+        if not usage:
+            return
         for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
             self._total_usage[k] = self._total_usage.get(k, 0) + usage.get(k, 0)

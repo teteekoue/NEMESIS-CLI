@@ -7,7 +7,7 @@ from .client import MCPClient
 class MCPManager:
     def __init__(self):
         self.servers: Dict[str, MCPClient] = {}
-        self._tool_map: Dict[str, tuple] = {}  # prefixed_name -> (server_name, original_name)
+        self._tool_map: Dict[str, tuple] = {}
 
     def add_server(self, name: str, command: str, args: list = None, env: dict = None) -> bool:
         try:
@@ -16,7 +16,7 @@ class MCPManager:
             self.servers[name] = client
             self._rebuild_tool_map()
             return True
-        except Exception as e:
+        except Exception:
             return False
 
     def remove_server(self, name: str) -> bool:
@@ -35,12 +35,18 @@ class MCPManager:
         tools = []
         for prefixed, (srv, orig) in self._tool_map.items():
             client = self.servers.get(srv)
-            if not client: continue
+            if not client:
+                continue
             for t in client.list_tools():
                 if t.get("name") == orig:
-                    tool = {"type": "function", "function": {"name": f"mcp__{orig}",
+                    tool = {
+                        "type": "function",
+                        "function": {
+                            "name": f"mcp__{orig}",
                             "description": f"[MCP:{srv}] {t.get('description', '')}",
-                            "parameters": t.get("inputSchema", {"type": "object", "properties": {}})}}}
+                            "parameters": t.get("inputSchema", {"type": "object", "properties": {}})
+                        }
+                    }
                     tools.append(tool)
                     break
         return tools
@@ -59,9 +65,12 @@ class MCPManager:
             try:
                 for t in client.list_tools():
                     name = t.get("name", "")
-                    if name: self._tool_map[f"{srv_name}__{name}"] = (srv_name, name)
-            except: pass
+                    if name:
+                        self._tool_map[f"{srv_name}__{name}"] = (srv_name, name)
+            except Exception:
+                pass
 
     def close_all(self):
-        for c in self.servers.values(): c.close()
+        for c in self.servers.values():
+            c.close()
         self.servers.clear()

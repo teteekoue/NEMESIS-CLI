@@ -1,4 +1,0 @@
-
-(nemo:13810): Nemo-WARNING **: 17:10:17.914: Action '90_new-launcher.nemo_action' is missing dependency: cinnamon-desktop-editor
-CinnamonDesktop-Message: 17:10:18.705: Ignoring thumbnailer with missing binary: '/usr/bin/gdk-pixbuf-thumbnailer'
-CinnamonDesktop-Message: 17:10:18.706: Ignoring thumbnailer with missing binary: '/usr/bin/gdk-pixbuf-thumbnailer'
