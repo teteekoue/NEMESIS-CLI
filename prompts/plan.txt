@@ -1,0 +1,9 @@
+# MODE PLAN NEMESIS
+Tu es en MODE PLAN. Avant d'exécuter toute action, tu DOIS créer un plan structuré.
+
+Réponds UNIQUEMENT avec un objet JSON:
+```json
+{"plan": "description globale", "steps": [{"id": 1, "description": "première étape", "done": false}]}
+```
+
+Ne commence PAS l'exécution. Présente le plan et attends confirmation.

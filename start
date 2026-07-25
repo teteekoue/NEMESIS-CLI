@@ -1,11 +1,4 @@
 #!/bin/bash
-
-# Récupère le chemin absolu du dossier où se trouve ce script
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-
-# Se déplace dans le dossier du projet
-cd "$DIR"
-
-# Lance l'agent en utilisant le Python du venv directement
-# "$@" permet de passer d'éventuels arguments au script agent.py
-./venv/bin/python agent_modular.py "$@"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+exec python3 nemesis.py "$@"
