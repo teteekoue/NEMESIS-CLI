@@ -24,7 +24,7 @@ jobs:
             python:3.12 \
             bash -c '
               apt-get update -qq && apt-get install -y -qq dpkg binutils > /dev/null 2>&1
-              pip install --quiet pyinstaller rich prompt_toolkit httpx pydantic pyyaml pyperclip
+              pip install --quiet pyinstaller rich prompt_toolkit httpx pydantic pyyaml pyperclip textual
               DEB_ARCH=amd64 PYINST_ARCH=x86_64 python3 /src/scripts/ci_build.py
             '
       - uses: actions/upload-artifact@v4
@@ -45,7 +45,7 @@ jobs:
             i386/python:3.12 \
             bash -c '
               apt-get update -qq && apt-get install -y -qq dpkg binutils gcc > /dev/null 2>&1
-              pip install --quiet pyinstaller rich prompt_toolkit httpx pydantic pyyaml pyperclip
+              pip install --quiet pyinstaller rich prompt_toolkit httpx pydantic pyyaml pyperclip textual
               DEB_ARCH=i386 PYINST_ARCH=x86 python3 /src/scripts/ci_build.py
             '
       - uses: actions/upload-artifact@v4

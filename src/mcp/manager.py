@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Gestionnaire de serveurs MCP."""
+import shlex
 from typing import Dict, Any, List
 from .client import MCPClient
 
@@ -11,7 +12,9 @@ class MCPManager:
 
     def add_server(self, name: str, command: str, args: list = None, env: dict = None) -> bool:
         try:
-            client = MCPClient(command, args or [], env)
+            if not args:
+                args = []
+            client = MCPClient(command, args, env or {})
             client.initialize()
             self.servers[name] = client
             self._rebuild_tool_map()
@@ -57,7 +60,7 @@ class MCPManager:
             for t in client.list_tools():
                 if t.get("name") == real_name:
                     return client.call_tool(real_name, arguments)
-        return {"content": [{"type": "text", "text": f"Outil MCP non trouvé: {real_name}"}], "isError": True}
+        return {"content": [{"type": "text", "text": f"Outil MCP non trouve: {real_name}"}], "isError": True}
 
     def _rebuild_tool_map(self):
         self._tool_map = {}
@@ -74,3 +77,4 @@ class MCPManager:
         for c in self.servers.values():
             c.close()
         self.servers.clear()
+

@@ -1,7 +1,6 @@
-"""Exécuteur d'outils."""
+"""Executeur d'outils."""
 import os, subprocess, re, fnmatch
 from pathlib import Path
-from typing import Generator
 
 
 class ToolExecutor:
@@ -10,7 +9,6 @@ class ToolExecutor:
         self.mcp_manager = mcp_manager
 
     def execute(self, tool_name: str, arguments: dict) -> dict:
-        # Vérifier si c'est un outil MCP
         if tool_name.startswith("mcp__"):
             real_name = tool_name[5:]
             if self.mcp_manager:
@@ -20,7 +18,7 @@ class ToolExecutor:
                     "output": str(result.get("content", "")),
                     "error": "" if not result.get("isError") else str(result)
                 }
-            return {"success": False, "output": "", "error": "MCP non configuré"}
+            return {"success": False, "output": "", "error": "MCP non configure"}
 
         handler = getattr(self, f"_exec_{tool_name}", None)
         if not handler:
@@ -35,20 +33,26 @@ class ToolExecutor:
         timeout = args.get("timeout", 300)
         cwd = args.get("working_dir", self.workspace)
         try:
-            proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout, cwd=cwd)
+            proc = subprocess.run(
+                ["bash", "-c", cmd],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=cwd
+            )
             output = proc.stdout
             if proc.stderr:
                 output += "\n[STDERR]\n" + proc.stderr
             max_out = 500000
             if len(output) > max_out:
-                output = output[:max_out] + "\n[TRONQUÉ]"
+                output = output[:max_out] + "\n[TRONQUE]"
             return {
                 "success": proc.returncode == 0,
                 "output": output,
                 "error": "" if proc.returncode == 0 else f"Exit code: {proc.returncode}"
             }
         except subprocess.TimeoutExpired:
-            return {"success": False, "output": "", "error": f"Timeout après {timeout}s"}
+            return {"success": False, "output": "", "error": f"Timeout apres {timeout}s"}
         except Exception as e:
             return {"success": False, "output": "", "error": str(e)}
 
@@ -74,7 +78,7 @@ class ToolExecutor:
             os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
             with open(path, "w") as f:
                 f.write(content)
-            return {"success": True, "output": f"Fichier écrit: {path} ({len(content)} chars)", "error": ""}
+            return {"success": True, "output": f"Fichier ecrit: {path} ({len(content)} chars)", "error": ""}
         except Exception as e:
             return {"success": False, "output": "", "error": str(e)}
 
@@ -88,11 +92,11 @@ class ToolExecutor:
             with open(path, "r") as f:
                 content = f.read()
             if old_t not in content:
-                return {"success": False, "output": "", "error": "Texte à remplacer non trouvé"}
+                return {"success": False, "output": "", "error": "Texte a remplacer non trouve"}
             new_content = content.replace(old_t, new_t, 1)
             with open(path, "w") as f:
                 f.write(new_content)
-            return {"success": True, "output": f"Remplacement effectué dans {path}", "error": ""}
+            return {"success": True, "output": f"Remplacement effectue dans {path}", "error": ""}
         except Exception as e:
             return {"success": False, "output": "", "error": str(e)}
 
@@ -100,7 +104,7 @@ class ToolExecutor:
         path = self._resolve(args["path"])
         recursive = args.get("recursive", False)
         if not os.path.isdir(path):
-            return {"success": False, "output": "", "error": f"Répertoire introuvable: {path}"}
+            return {"success": False, "output": "", "error": f"Repertoire introuvable: {path}"}
         try:
             if recursive:
                 items = []
@@ -110,8 +114,15 @@ class ToolExecutor:
                     for d in sorted(dirs):
                         items.append(os.path.join(root, d) + "/")
             else:
-                items = sorted(os.listdir(path))
-            return {"success": True, "output": "\n".join(items) if isinstance(items, list) else str(items), "error": ""}
+                items = []
+                entries = sorted(os.listdir(path))
+                for entry in entries:
+                    full = os.path.join(path, entry)
+                    if os.path.isdir(full):
+                        items.append(entry + "/")
+                    else:
+                        items.append(entry)
+            return {"success": True, "output": "\n".join(items), "error": ""}
         except Exception as e:
             return {"success": False, "output": "", "error": str(e)}
 
@@ -138,7 +149,7 @@ class ToolExecutor:
                         break
             return {
                 "success": True,
-                "output": "\n".join(results) if results else "Aucun résultat",
+                "output": "\n".join(results) if results else "Aucun resultat",
                 "match_count": len(results)
             }
         except Exception as e:

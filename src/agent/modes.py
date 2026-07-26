@@ -117,8 +117,19 @@ class DualModelMode:
                 return r
             except Exception:
                 pass
+        m2 = re.search(r'\{[^{]*?"approved"\s*:\s*(?:true|false)[^}]*\}', content, re.S)
+        if m2:
+            try:
+                r = json.loads(m2.group(0))
+                r.setdefault("approved", False)
+                r.setdefault("issues", [])
+                r.setdefault("feedback", content)
+                return r
+            except Exception:
+                pass
+        approval_words = ["approuv", "approved", "approve", "bon", "good", "correct", "bien", "well", "valid"]
         return {
-            "approved": any(w in content.lower() for w in ["approuv", "bon", "correct", "bien"]),
+            "approved": any(w in content.lower() for w in approval_words),
             "issues": [],
             "feedback": content
         }
