@@ -15,14 +15,13 @@ function build_for() {
     local BD="$BUILD/${DEB_ARCH}"
     local PKG="$BD/pkg/nemesis-cli_${VERSION}_${DEB_ARCH}"
     rm -rf "$BD"
-    mkdir -p "$PKG/DEBIAN" "$PKG/usr/bin"
+    mkdir -p "$BD/dist" "$BD/work" "$PKG/DEBIAN" "$PKG/usr/bin"
 
     # --- PyInstaller onefile: tout empaquetté dans un seul binaire ---
     cd "$DIR"
     pyinstaller --clean --onefile \
         --distpath "$BD/dist" \
         --workpath "$BD/work" \
-        --specpath "$BD" \
         --name nemesis \
         --hidden-import=httpx \
         --hidden-import=httpx._transports.default \
@@ -50,9 +49,12 @@ function build_for() {
         --add-data "prompts:prompts" \
         --add-data "src:src" \
         nemesis.py 2>&1 | tail -10
-    cd - > /dev/null
 
     # Copier le binaire onefile directement dans /usr/bin
+    if [ ! -f "$BD/dist/nemesis" ]; then
+        echo "ERREUR: binaire non trouvé: $BD/dist/nemesis"
+        return 1
+    fi
     cp "$BD/dist/nemesis" "$PKG/usr/bin/nemesis"
     chmod +x "$PKG/usr/bin/nemesis"
 
@@ -83,6 +85,14 @@ mkdir -p /root/.nemesis 2>/dev/null || true
 mkdir -p "\$HOME/.nemesis" 2>/dev/null || true
 POSTEOF
     chmod 755 "$PKG/DEBIAN/postinst"
+
+    # --- Pre-remove ---
+    cat > "$PKG/DEBIAN/prerm" << PREMEOF
+#!/bin/bash
+rm -rf /root/.nemesis 2>/dev/null || true
+rm -rf "\$HOME/.nemesis" 2>/dev/null || true
+PREMEOF
+    chmod 755 "$PKG/DEBIAN/prerm"
 
     # --- Build deb ---
     dpkg-deb --build "$PKG" "$DIST/nemesis-cli_${VERSION}_${DEB_ARCH}.deb" 2>/dev/null \

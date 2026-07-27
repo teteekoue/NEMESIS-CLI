@@ -170,10 +170,10 @@ class NemesisTUI(App):
         Binding("ctrl+c", "quit", "Quit", show=True),
     ]
 
-    def __init__(self, config: NemesisConfig = None, debug: bool = False):
+    def __init__(self, config: NemesisConfig = None, debug_mode: bool = False):
         super().__init__()
         self.config = config or load_config()
-        self.debug = debug
+        self._debug_mode = debug_mode
         self.running = True
         self.plan_mode = False
         self.dual_mode = False
@@ -258,7 +258,7 @@ class NemesisTUI(App):
             get_tool_definitions(),
             self.tool_executor,
             self.config.workspace,
-            self.debug,
+            self._debug_mode,
         )
 
     def _update_sidebar(self):

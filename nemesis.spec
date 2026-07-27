@@ -1,68 +1,38 @@
 # -*- mode: python ; coding: utf-8 -*-
-block_cipher = None
-import sys
-from pathlib import Path
 
-PROJECT_DIR = Path(SPECPATH)
 
-# Tout empaqueter: prompts, src, requirements
 a = Analysis(
     ['nemesis.py'],
-    pathex=[str(PROJECT_DIR)],
+    pathex=[],
     binaries=[],
-    datas=[
-        ('prompts', 'prompts'),
-        ('src', 'src'),
-    ],
-    hiddenimports=[
-        'httpx', 'httpx._transports', 'httpx._transports.default',
-        'httpcore', 'httpcore._async', 'httpcore._sync',
-        'h11', 'anyio', 'anyio._backends',
-        'anyio._backends._asyncio',
-        'rich', 'rich.console', 'rich.markdown', 'rich.panel',
-        'rich.table', 'rich.text', 'rich.tree', 'rich.syntax',
-        'rich.theme', 'rich.prompt',
-        'prompt_toolkit', 'prompt_toolkit.completion',
-        'prompt_toolkit.history', 'prompt_toolkit.auto_suggest',
-        'prompt_toolkit.key_binding', 'prompt_toolkit.styles',
-        'pydantic', 'pydantic_core',
-        'yaml', 'pyperclip',
-        'certifi', 'idna', 'sniffio',
-        'fnmatch',
-        'src', 'src.config', 'src.prompts',
-        'src.providers', 'src.providers.base',
-        'src.tools', 'src.tools.definitions', 'src.tools.executor',
-        'src.agent', 'src.agent.core', 'src.agent.sub_agent', 'src.agent.modes',
-        'src.mcp', 'src.mcp.client', 'src.mcp.manager',
-        'src.ui', 'src.ui.theme', 'src.ui.logo', 'src.ui.renderer', 'src.ui.input_handler',
-        'src.commands', 'src.commands.registry', 'src.commands.builtins',
-    ],
-    excludes=['matplotlib', 'numpy', 'pandas', 'PIL', 'tkinter', 'unittest', 'test'],
+    datas=[('prompts', 'prompts'), ('src', 'src')],
+    hiddenimports=['httpx', 'httpx._transports.default', 'httpcore', 'h11', 'anyio', 'rich', 'rich.console', 'rich.markdown', 'rich.panel', 'prompt_toolkit', 'pydantic', 'yaml', 'textual', 'textual.app', 'textual.widgets', 'src.config', 'src.providers', 'src.tools', 'src.agent', 'src.mcp', 'src.ui', 'src.commands', 'src.tui'],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[],
     noarchive=False,
+    optimize=0,
 )
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.datas,
     [],
-    exclude_binaries=True,
     name='nemesis',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,
-    icon=None,
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
     upx_exclude=[],
-    name='nemesis',
+    runtime_tmpdir=None,
+    console=True,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
 )
