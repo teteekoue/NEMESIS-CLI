@@ -1,5 +1,24 @@
 from rich.text import Text
 
+def get_eagle_logo():
+    """Logo ASCII Aigle pour NEMESIS."""
+    return r"""
+                    ___
+               ____/   \____
+              /             \
+             |  (o)     (o)  |
+             |       <       |   N E M E S I S
+             |    \_____/    |      C L I
+             |  /         \  |
+              \ \  _____  / /
+               \_\|_____||/_/
+                  |_____||
+                  |_____||
+                  |_____||
+                  |_____||
+                  |_____||
+    """
+
 def get_full_logo():
     return (
         "[bold #FF79C6] N[/bold #FF79C6]"
