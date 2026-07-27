@@ -1,111 +1,127 @@
 #!/usr/bin/env python3
-"""NEMESIS-CLI v4.0 - Agent de codage IA ultra-moderne inspiré de Claude Code."""
+"""NEMESIS-CLI v5.0 - Agent de codage IA ultra-moderne - Interface CLI simple et élégante."""
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.config import NemesisConfig, load_config, save_config, ensure_config_dir
-from src.providers import PROVIDER_REGISTRY
 
 
-def print_eagle_logo(console):
+def print_eagle_logo():
     """Affiche le logo aigle ASCII."""
-    from rich.panel import Panel
-    from rich.text import Text
-    
-    eagle = r"""
+    logo = """
                     ___
-               ____/   \____
-              /             \
+               ____/   \\____
+              /             \\
              |  (o)     (o)  |
              |       <       |   N E M E S I S
-             |    \_____/    |      C L I  v4.0
-             |  /         \  |
-              \ \  _____  / /
-               \_\|_____||/_/
+             |    \\_____/    |      C L I  v5.0
+             |  /         \\  |
+              \\ \\  _____  / /
+               \\_\\|_____||/_/
                   |_____||
                   |_____||
                   |_____||
                   |_____||
                   |_____||
     """
-    logo_text = Text(eagle, style="bold #7aa2f7")
-    console.print(Panel(logo_text, border_style="#bd93f9", padding=(1, 2)))
+    print(logo)
+
+
+def print_banner():
+    """Affiche une ligne de séparation."""
+    print("─" * 80)
+
+
+def print_error(msg):
+    """Affiche un message d'erreur."""
+    print(f"  ✗ {msg}")
+
+
+def print_success(msg):
+    """Affiche un message de succès."""
+    print(f"  ✓ {msg}")
+
+
+def print_info(msg):
+    """Affiche un message d'information."""
+    print(f"  • {msg}")
+
+
+def print_system(msg):
+    """Affiche un message système."""
+    print(f"  » {msg}")
 
 
 def run_setup():
     """Configuration interactive."""
-    from rich.console import Console
-    from rich.prompt import Prompt, Confirm
-    from rich.panel import Panel
-
-    console = Console()
+    from src.providers import PROVIDER_REGISTRY
+    
     ensure_config_dir()
     
-    print_eagle_logo(console)
-    console.print("\n[bold bright_cyan]  Configuration initiale v4.0[/bold bright_cyan]\n")
+    print_eagle_logo()
+    print_banner()
+    print("\n  Configuration initiale v5.0\n")
+    print_banner()
 
     config = load_config()
-    console.print("  [dim]Selectionnez un provider:[/dim]")
+    print("\n  Sélectionnez un provider:")
     providers = list(PROVIDER_REGISTRY.keys())
     for i, p in enumerate(providers):
-        console.print(f"    [cyan]{i+1}[/cyan]. {p}")
+        print(f"    {i+1}. {p}")
 
-    choice = Prompt.ask(
-        "  Provider",
-        choices=[str(i + 1) for i in range(len(providers))],
-        default="1"
-    )
-    selected = providers[int(choice) - 1]
+    try:
+        choice = input("\n  Provider [1/2/3/4/5/6/7] (1): ").strip() or "1"
+        selected = providers[int(choice) - 1]
+    except (ValueError, IndexError):
+        selected = providers[0]
+    
     config.active_provider = selected
 
     if selected != "api_bridge":
-        api_key = Prompt.ask("  API Key", password=True)
-        model = Prompt.ask("  Modele", default=PROVIDER_REGISTRY[selected]().model)
+        api_key = input("  API Key: ").strip()
+        default_model = PROVIDER_REGISTRY[selected]().model
+        model = input(f"  Modele ({default_model}): ").strip() or default_model
         config.providers[selected] = {"api_key": api_key, "model": model}
         config.active_model = model
     else:
-        host = Prompt.ask("  IP Bridge", default="192.168.1.67")
-        port = Prompt.ask("  Port", default="8080")
+        host = input("  IP Bridge (192.168.1.67): ").strip() or "192.168.1.67"
+        port = input("  Port (8080): ").strip() or "8080"
         config.providers["api_bridge"] = {"base_url": f"http://{host}:{port}"}
 
     save_config(config)
-    console.print("\n[green]✓[/green] [success]Configuration sauvegardee dans ~/.nemesis/config.json[/success]")
-    console.print("[dim]  Lancez nemesis sans argument pour demarrer le TUI[/dim]\n")
+    print("\n  ✓ Configuration sauvegardee dans ~/.nemesis/config.json")
+    print("  Lancez 'nemesis' sans argument pour demarrer\n")
 
 
 def run_cli(debug=False):
-    """Mode CLI moderne style Claude Code."""
-    from src.ui.theme import NEMESIS_THEME
+    """Mode CLI moderne style Aider/Claude Code - Interface simple et élégante."""
     from src.tools.definitions import get_tool_definitions
     from src.tools.executor import ToolExecutor
     from src.agent.core import NemesisAgent
     from src.agent.modes import PlanMode, DualModelMode
     from src.mcp.manager import MCPManager
-    from src.ui.renderer import OutputRenderer
-    from src.ui.input_handler import NemesisInputHandler
-    from src.commands.registry import CommandRegistry
     from src.commands.builtins import register_all_commands
     from src.prompts import get_system_prompt
-    from src.ui.logo import get_eagle_logo
-    from rich.console import Console
-    from rich.prompt import Confirm
-    from rich.panel import Panel
-    from rich.markdown import Markdown
-
+    
     config = load_config()
-    console = Console(theme=NEMESIS_THEME)
-    renderer = OutputRenderer(console)
+    
+    # Afficher logo
+    print_eagle_logo()
+    print_banner()
+    print(f"  NEMESIS-CLI v5.0")
+    print(f"  Provider: {config.active_provider}")
+    print(f"  Modele: {config.active_model or 'auto'}")
+    print(f"  Workspace: {config.workspace}")
+    print(f"  Tapez /help pour la liste des commandes")
+    print_banner()
 
-    # Afficher logo aigle
-    eagle = get_eagle_logo()
-    console.print(Panel(eagle, border_style="#bd93f9", padding=(0, 2)))
-
+    from src.providers import PROVIDER_REGISTRY
     name = config.active_provider
     cls = PROVIDER_REGISTRY.get(name)
     if not cls:
-        console.print("[error] Provider introuvable. Lancez avec --setup[/error]")
+        print_error("Provider introuvable. Lancez avec --setup")
         sys.exit(1)
 
     cfg = config.providers.get(name, {})
@@ -118,7 +134,7 @@ def run_cli(debug=False):
     )
 
     if not provider.validate_config() and name != "api_bridge":
-        console.print("[error] API Key manquante. Lancez avec --setup[/error]")
+        print_error("API Key manquante. Lancez avec --setup")
         sys.exit(1)
 
     from src.config import load_mcp_servers
@@ -139,8 +155,6 @@ def run_cli(debug=False):
     system_prompt = get_system_prompt()
     agent = NemesisAgent(provider, system_prompt, get_tool_definitions(), tool_exec, config.workspace, debug)
 
-    renderer.render_welcome("4.0.0", config.active_provider, config.active_model or provider.model)
-
     class AppCtx:
         def __init__(self):
             self.running = True
@@ -150,22 +164,37 @@ def run_cli(debug=False):
 
     ctx = AppCtx()
 
-    def agent_callback(event, data):
-        if event == "tool_call":
-            renderer.render_tool_call(data["name"], {"args": data.get("args_preview", "")})
-        elif event == "tool_result":
-            renderer.render_tool_result(data["name"], {"success": data.get("success", False)})
-        elif event == "dual_round":
-            console.print(f"\n[dim]  Dual Model - Round {data['round']}[/dim]")
-        elif event == "review_result":
-            status = "[green]APPROUVE[/green]" if data.get("approved") else "[yellow]EN REVISION[/yellow]"
-            console.print(f"  Review: {status}")
+    def render_tool_call(name, data):
+        print(f"\n  [OUTIL] {name}")
+        if data.get("args"):
+            for k, v in data["args"].items():
+                val_str = str(v)[:100] + "..." if len(str(v)) > 100 else str(v)
+                print(f"      {k}: {val_str}")
 
-    input_handler = NemesisInputHandler()
+    def render_tool_result(name, data):
+        status = "[OK]" if data.get("success") else "[ECHEC]"
+        print(f"  {status} [RESULTAT] {name}")
+
+    def render_message(content):
+        """Affiche le message de l'assistant de manière élégante."""
+        print()
+        # Nettoyage basique du contenu
+        lines = content.split('\n')
+        for line in lines:
+            # Retirer les balises markdown trop aggressives pour un affichage clean
+            cleaned = line
+            # Conserver le code entre ``` mais sans les backticks
+            if cleaned.strip().startswith('```'):
+                continue
+            print(f"  {cleaned}")
+        print()
 
     while ctx.running:
         try:
-            user_input = input_handler.get_input()
+            # Input simple et élégant
+            print()
+            user_input = input("  nemesis ❯ ").strip()
+            
             if not user_input:
                 continue
 
@@ -175,105 +204,133 @@ def run_cli(debug=False):
                 arg = parts[1] if len(parts) > 1 else ""
 
                 if cmd in ("exit", "quit", "q"):
+                    print("\n  Au revoir.")
                     ctx.running = False
+                    
                 elif cmd in ("clear", "c"):
                     agent.clear_history()
-                    console.print("[green]✓[/green] [dim]Historique efface[/dim]")
-                elif cmd in ("plan",):
+                    print_success("Historique efface")
+                    
+                elif cmd == "plan":
                     if arg in ("on", "off"):
                         ctx.plan_mode = arg == "on"
                     else:
                         ctx.plan_mode = not ctx.plan_mode
-                    state = "[green]ACTIF[/green]" if ctx.plan_mode else "[dim]desactive[/dim]"
-                    console.print(f"  Mode Plan: {state}")
-                elif cmd in ("dual",):
+                    state = "ACTIF" if ctx.plan_mode else "desactive"
+                    print_system(f"Mode Plan: {state}")
+                    
+                elif cmd == "dual":
                     if arg == "on" and config.dual_model:
                         ctx.dual_mode = True
                     elif arg == "off":
                         ctx.dual_mode = False
                     elif arg == "setup":
-                        console.print("[system]  Configuration dual-modele...[/system]")
+                        print_system("Configuration dual-modele...")
                         dm = config.dual_model
-                        dm["model_a_provider"] = Prompt.ask("  Provider A", default="groq")
-                        dm["model_a_api_key"] = Prompt.ask("  API Key A", password=True, default="")
-                        dm["model_a_model"] = Prompt.ask("  Modele A", default="llama-3.3-70b-versatile")
-                        dm["model_b_provider"] = Prompt.ask("  Provider B", default="groq")
-                        dm["model_b_api_key"] = Prompt.ask("  API Key B", password=True, default="")
-                        dm["model_b_model"] = Prompt.ask("  Modele B", default="llama-3.3-70b-versatile")
-                        config.dual_model = dm
-                        save_config(config)
-                        console.print("[green]✓[/green] [success]Dual config sauvegarde[/success]")
-                        return
-                    state = "[green]ACTIF[/green]" if ctx.dual_mode else "[dim]desactive[/dim]"
-                    console.print(f"  Mode Dual: {state}")
-                elif cmd in ("cost",):
+                        try:
+                            dm["model_a_provider"] = input("  Provider A (groq): ").strip() or "groq"
+                            dm["model_a_api_key"] = input("  API Key A: ").strip()
+                            dm["model_a_model"] = input("  Modele A (llama-3.3-70b-versatile): ").strip() or "llama-3.3-70b-versatile"
+                            dm["model_b_provider"] = input("  Provider B (groq): ").strip() or "groq"
+                            dm["model_b_api_key"] = input("  API Key B: ").strip()
+                            dm["model_b_model"] = input("  Modele B (llama-3.3-70b-versatile): ").strip() or "llama-3.3-70b-versatile"
+                            config.dual_model = dm
+                            save_config(config)
+                            print_success("Dual config sauvegarde")
+                        except KeyboardInterrupt:
+                            print("\n  Configuration annulee")
+                            return
+                    state = "ACTIF" if ctx.dual_mode else "desactive"
+                    print_system(f"Mode Dual: {state}")
+                    
+                elif cmd == "cost":
                     usage = agent.get_token_usage()
-                    renderer.render_token_usage(usage)
-                elif cmd in ("status",):
-                    console.print(f"\n  [bold]NEMESIS-CLI v4.0[/bold]")
-                    console.print(f"  Provider: {config.active_provider}")
-                    console.print(f"  Modele: {config.active_model or provider.model}")
-                    console.print(f"  Plan: {'[green]ON[/green]' if ctx.plan_mode else '[dim]OFF[/dim]'}")
-                    console.print(f"  Dual: {'[green]ON[/green]' if ctx.dual_mode else '[dim]OFF[/dim]'}")
-                    console.print(f"  Auto-Allow: {'[green]ON[/green]' if ctx.auto_allow else '[dim]OFF[/dim]'}")
-                    console.print(f"  Messages: {len(agent.get_history())}")
-                    console.print(f"  MCP Servers: {len(mcp_manager.list_servers())}")
+                    print(f"\n  Usage tokens:")
+                    print(f"    Input:  {usage.get('input_tokens', 0)}")
+                    print(f"    Output: {usage.get('output_tokens', 0)}")
+                    print(f"    Total:  {usage.get('total_tokens', 0)}")
+                    
+                elif cmd == "status":
+                    print(f"\n  NEMESIS-CLI v5.0")
+                    print(f"  Provider: {config.active_provider}")
+                    print(f"  Modele: {config.active_model or provider.model}")
+                    print(f"  Plan: {'ON' if ctx.plan_mode else 'OFF'}")
+                    print(f"  Dual: {'ON' if ctx.dual_mode else 'OFF'}")
+                    print(f"  Auto-Allow: {'ON' if ctx.auto_allow else 'OFF'}")
+                    print(f"  Messages: {len(agent.get_history())}")
+                    print(f"  MCP Servers: {len(mcp_manager.list_servers())}")
+                    
                 elif cmd in ("help", "h", "?"):
                     help_text = """
 **Commandes disponibles:**
-- `/help` - Afficher cette aide
-- `/clear` ou `/c` - Effacer l'historique
-- `/exit` ou `/quit` ou `/q` - Quitter
-- `/model [provider/model]` - Afficher/changer le modèle
-- `/provider [name]` - Lister/changer provider
-- `/plan [on|off]` - Mode planification
-- `/dual [setup|on|off]` - Mode dual-modèle
-- `/mcp [list|add|remove]` - Gestion serveurs MCP
-- `/config [set key value]` - Configuration
-- `/cost` - Usage tokens
-- `/status` - Statut session
-- `/compact` - Compacter historique
-- `/undo` - Annuler dernier échange
-- `/auto` - Mode auto-allow tools
-- `/agent [list|api add|api list]` - Sous-agents
+
+  **Navigation:**
+    /help, /?       - Afficher cette aide
+    /clear, /c      - Effacer l'historique
+    /exit, /quit    - Quitter
+
+  **Mode:**
+    /plan [on|off]  - Mode planification
+    /dual [setup|on|off] - Mode dual-modèle
+    /auto           - Mode auto-allow tools
+
+  **Configuration:**
+    /model [prov/model] - Afficher/changer modèle
+    /provider [name]    - Lister/changer provider
+    /config [set k v]   - Configuration générale
+    /mcp [list|add|rm]  - Gestion serveurs MCP
+
+  **Session:**
+    /status         - Statut session
+    /cost           - Usage tokens
+    /compact        - Compacter historique
+    /undo           - Annuler dernier échange
+
+  **Agents:**
+    /agent [cmd]    - Gestion sous-agents
 """
-                    console.print(Markdown(help_text))
-                elif cmd in ("compact",):
+                    print(help_text)
+                    
+                elif cmd == "compact":
                     agent.compact_history()
-                    console.print("[green]✓[/green] [dim]Historique compacte[/dim]")
-                elif cmd in ("undo",):
+                    print_success("Historique compacte")
+                    
+                elif cmd == "undo":
                     hist = agent.get_history()
                     if len(hist) >= 4:
                         agent.messages = hist[:-4] if len(hist) > 6 else [hist[0]]
-                        console.print("[green]✓[/green] [dim]Dernier echange annule[/dim]")
+                        print_success("Dernier echange annule")
                     else:
-                        console.print("[dim]  Rien a annuler[/dim]")
-                elif cmd in ("auto",):
+                        print_info("Rien a annuler")
+                        
+                elif cmd == "auto":
                     ctx.auto_allow = not ctx.auto_allow
-                    state = "[green]ON[/green]" if ctx.auto_allow else "[dim]OFF[/dim]"
-                    console.print(f"  Auto-allow: {state}")
-                elif cmd in ("mcp",):
+                    state = "ON" if ctx.auto_allow else "OFF"
+                    print_system(f"Auto-allow: {state}")
+                    
+                elif cmd == "mcp":
                     sub_args = arg.split() if arg else []
                     if not sub_args or sub_args[0] == "list":
                         servers = mcp_manager.list_servers()
                         if not servers:
-                            console.print("  [dim]Aucun serveur MCP[/dim]")
+                            print_info("Aucun serveur MCP")
                         else:
                             for s in servers:
-                                console.print(f"  [cyan]{s}[/cyan]")
+                                print(f"    • {s}")
                         tools = mcp_manager.get_all_tools()
                         if tools:
-                            console.print(f"  [dim]{len(tools)} outils MCP disponibles[/dim]")
+                            print_info(f"{len(tools)} outils MCP disponibles")
                     elif sub_args[0] == "add" and len(sub_args) >= 3:
                         srv_name, cmd_str = sub_args[1], sub_args[2]
                         if mcp_manager.add_server(srv_name, cmd_str, [], {}):
-                            console.print(f"[green]✓[/green] [success]Serveur MCP '{srv_name}' ajoute[/success]")
+                            print_success(f"Serveur MCP '{srv_name}' ajoute")
                         else:
-                            console.print(f"[red]✗[/red] [error]Echec ajout '{srv_name}'[/error]")
+                            print_error(f"Echec ajout '{srv_name}'")
                     elif sub_args[0] == "remove" and len(sub_args) >= 2:
                         mcp_manager.remove_server(sub_args[1])
-                        console.print(f"  Serveur MCP '{sub_args[1]}' supprime")
-                elif cmd in ("model",):
+                        print_info(f"Serveur MCP '{sub_args[1]}' supprime")
+                        
+                elif cmd == "model":
                     if arg:
                         if "/" in arg:
                             prov, model = arg.split("/", 1)
@@ -282,52 +339,65 @@ def run_cli(debug=False):
                         else:
                             config.active_model = arg
                         save_config(config)
-                        console.print(f"[green]✓[/green] [success]Modele: {config.active_provider}/{config.active_model}[/success]")
+                        print_success(f"Modele: {config.active_provider}/{config.active_model}")
                     else:
-                        console.print(f"  Provider: {config.active_provider}")
-                        console.print(f"  Modele: {config.active_model or provider.model}")
-                elif cmd in ("provider",):
+                        print_info(f"Provider: {config.active_provider}")
+                        print_info(f"Modele: {config.active_model or provider.model}")
+                        
+                elif cmd == "provider":
                     if arg:
                         if arg in PROVIDER_REGISTRY:
                             config.active_provider = arg
                             save_config(config)
-                            console.print(f"[green]✓[/green] [success]Provider: {arg}[/success]")
+                            print_success(f"Provider: {arg}")
                         else:
-                            console.print(f"[red]✗[/red] [error]Provider inconnu: {arg}[/error]")
+                            print_error(f"Provider inconnu: {arg}")
                     else:
                         for pname in PROVIDER_REGISTRY:
-                            marker = " [green]◄[/green]" if pname == config.active_provider else ""
-                            console.print(f"  [cyan]{pname}[/cyan]{marker}")
-                elif cmd in ("config",):
+                            marker = " ◄" if pname == config.active_provider else ""
+                            print(f"    {pname}{marker}")
+                            
+                elif cmd == "config":
                     sub_args = arg.split() if arg else []
                     if sub_args and sub_args[0] == "set" and len(sub_args) >= 3:
                         key, val = sub_args[1], sub_args[2]
                         if hasattr(config, key):
                             setattr(config, key, val)
                             save_config(config)
-                            console.print(f"[green]✓[/green] [success]{key} = {val}[/success]")
+                            print_success(f"{key} = {val}")
                     else:
                         for k, v in config.to_dict().items():
-                            console.print(f"  [cyan]{k}:[/cyan] {v}")
-                elif cmd in ("agent",):
+                            print(f"    {k}: {v}")
+                            
+                elif cmd == "agent":
                     sub_args = arg.split() if arg else []
-                    # Gestion simplifiée des sous-agents
-                    console.print("  [dim]Gestion des sous-agents (feature complète dans TUI)[/dim]")
+                    print_info("Gestion des sous-agents")
+                    # Feature complète dans documentation
+                    
                 else:
-                    console.print(f"  [red]Commande inconnue: {cmd}[/red] - tapez /help")
+                    print_error(f"Commande inconnue: {cmd} - tapez /help")
                 continue
 
+            # Mode Plan
             if ctx.plan_mode:
                 pm = PlanMode(agent)
-                plan = pm.create_plan(user_input, callback=agent_callback)
+                plan = pm.create_plan(user_input, callback=lambda e, d: None)
                 if plan.get("steps"):
-                    console.print("\n[system]  Plan genere:[/system]")
-                    renderer.render_plan(plan["steps"])
-                    if Confirm.ask("  Executer ce plan ?"):
-                        pm.execute_all(callback=agent_callback)
+                    print_system("Plan genere:")
+                    for i, step in enumerate(plan["steps"], 1):
+                        print(f"    {i}. {step.get('description', 'Étape')}")
+                    try:
+                        resp = input("\n  Executer ce plan ? (y/n): ").strip().lower()
+                        if resp in ("y", "yes", "o", "oui"):
+                            pm.execute_all(callback=lambda e, d: None)
+                    except KeyboardInterrupt:
+                        print("\n  Execution annulee")
+                        
+            # Mode Dual
             elif ctx.dual_mode:
                 dm_cfg = config.dual_model
                 if dm_cfg and dm_cfg.get("model_a_api_key"):
+                    from src.providers import PROVIDER_REGISTRY
                     cls_a = PROVIDER_REGISTRY.get(dm_cfg.get("model_a_provider", "groq"))
                     cls_b = PROVIDER_REGISTRY.get(dm_cfg.get("model_b_provider", "groq"))
                     if cls_a and cls_b:
@@ -341,60 +411,57 @@ def run_cli(debug=False):
                         )
                         te = ToolExecutor(workspace=config.workspace, mcp_manager=mcp_manager)
                         dm = DualModelMode(prov_a, prov_b, get_tool_definitions(), te, get_system_prompt())
-                        result = dm.execute(user_input, callback=agent_callback)
+                        result = dm.execute(user_input, callback=lambda e, d: None)
                         if result.get("content"):
-                            renderer.render_assistant_message(result["content"])
+                            render_message(result["content"])
                     else:
-                        renderer.render_error("Providers dual introuvables")
+                        print_error("Providers dual introuvables")
                 else:
-                    renderer.render_error("Configurez le mode dual: /dual setup")
+                    print_error("Configurez le mode dual: /dual setup")
+                    
+            # Mode Normal
             else:
-                result = agent.chat(user_input, callback=agent_callback)
+                def callback(event, data):
+                    if event == "tool_call":
+                        render_tool_call(data["name"], {"args": data.get("args_preview", "")})
+                    elif event == "tool_result":
+                        render_tool_result(data["name"], {"success": data.get("success", False)})
+                    elif event == "dual_round":
+                        print_system(f"Dual Model - Round {data['round']}")
+                    elif event == "review_result":
+                        status = "APPROUVE" if data.get("approved") else "EN REVISION"
+                        print_system(f"Review: {status}")
+
+                result = agent.chat(user_input, callback=callback)
                 if result.get("content"):
-                    renderer.render_assistant_message(result["content"])
+                    render_message(result["content"])
                 if result.get("error"):
-                    renderer.render_error(result["error"])
+                    print_error(result["error"])
+                    
         except KeyboardInterrupt:
+            print("\n")
             continue
         except Exception as e:
             if debug:
                 import traceback
                 traceback.print_exc()
-            renderer.render_error(str(e))
+            print_error(str(e))
 
     mcp_manager.close_all()
-    console.print("\n[dim]  Au revoir.[/dim]")
-
-
-def run_tui(debug=False):
-    """Mode TUI moderne avec Textual."""
-    from src.tui.app import NemesisTUI
-
-    config = load_config()
-
-    if not config.providers.get(config.active_provider, {}).get("api_key") and config.active_provider != "api_bridge":
-        from rich.console import Console
-        Console().print("[error] API Key manquante. Lancez avec --setup[/error]")
-        sys.exit(1)
-
-    app = NemesisTUI(config=config, debug_mode=debug)
-    app.run()
+    print_info("Session terminee")
 
 
 def main():
     if "--version" in sys.argv or "-v" in sys.argv:
-        print("NEMESIS-CLI v4.0.0")
+        print("NEMESIS-CLI v5.0.0")
         return
 
     if "--setup" in sys.argv:
         run_setup()
         return
 
-    if "--cli" in sys.argv:
-        run_cli(debug="--debug" in sys.argv)
-        return
-
-    run_tui(debug="--debug" in sys.argv)
+    # Plus de mode TUI - tout est en CLI
+    run_cli(debug="--debug" in sys.argv)
 
 
 if __name__ == "__main__":

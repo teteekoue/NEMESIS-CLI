@@ -1,3 +1,0 @@
-#!/bin/bash
-rm -rf /root/.nemesis 2>/dev/null || true
-rm -rf "$HOME/.nemesis" 2>/dev/null || true

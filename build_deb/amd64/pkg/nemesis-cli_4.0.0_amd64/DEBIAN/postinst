@@ -1,3 +1,0 @@
-#!/bin/bash
-mkdir -p /root/.nemesis 2>/dev/null || true
-mkdir -p "$HOME/.nemesis" 2>/dev/null || true
