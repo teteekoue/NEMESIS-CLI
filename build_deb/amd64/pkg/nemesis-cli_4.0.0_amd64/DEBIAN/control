@@ -1,0 +1,13 @@
+Package: nemesis-cli
+Version: 4.0.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Installed-Size: 43068
+Depends: libc6 (>= 2.31), libssl3, ca-certificates
+Maintainer: teteekoue <teteekoue@users.noreply.github.com>
+Description: NEMESIS-CLI v4.0 - Agent de codage IA autonome
+ NEMESIS est un agent de codage autonome multi-fournisseurs
+ (Groq, NVIDIA NIM, OpenRouter, Fireworks, Cohere, API Bridge,
+ Custom OpenAI) avec integration MCP, mode plan, mode dual-modele,
+ sous-agents, et interface CLI moderne theme Dracula.

@@ -377,7 +377,7 @@ def run_tui(debug=False):
         Console().print("[error] API Key manquante. Lancez avec --setup[/error]")
         sys.exit(1)
 
-    app = NemesisTUI(config=config, debug=debug)
+    app = NemesisTUI(config=config, debug_mode=debug)
     app.run()
 
 
