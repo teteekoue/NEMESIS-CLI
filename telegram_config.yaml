@@ -1,0 +1,23 @@
+# Configuration pour le bot Telegram NEMESIS
+# Copiez ce fichier en telegram_config.yaml et remplissez avec vos informations
+
+# Token du bot Telegram (obtenu via @BotFather)
+token: "8896042941:AAEoP7VwYvB8JTzy4GwFfZPGqZ_r2nh6DHM"
+
+# Répertoire de travail pour l'agent
+workspace: "./workspace"
+
+# Configuration optionnelle
+# timeout: 30  # Timeout en secondes pour les requêtes
+# max_message_length: 4000  # Longueur maximale des messages (limite Telegram)
+
+# Autorisations (optionnel)
+# allowed_users:  # Liste des IDs utilisateurs autorisés (laisser vide pour tous)
+#   - 123456789
+#   - 987654321
+
+# Paramètres du provider LLM (optionnel)
+# provider:
+#   type: "groq"
+#   api_key: "votre_cle_api"
+#   model: "llama-3.1-70b-versatile"
