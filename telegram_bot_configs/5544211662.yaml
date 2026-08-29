@@ -1,0 +1,12 @@
+provider:
+  type: nemapi-v3
+  api_key: Bonjour 😊
+  model: deepseek-chat
+bridge:
+  host: 192.168.1.67
+  port: 8080
+nemapi_bridge:
+  host: 127.0.0.1
+  port: 8080
+security:
+  workspace: ./workspace

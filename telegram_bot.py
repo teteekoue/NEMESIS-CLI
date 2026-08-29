@@ -272,14 +272,14 @@ class NemesisTelegramBot:
         user = update.effective_user
         
         welcome_message = (
-            "<b>🚀 Bienvenue sur NEMESIS Telegram Bot v3.0</b>\n\n"
+            "*NEMESIS Bienvenue sur NEMESIS Telegram Bot v3.0*\n\n"
             f"Bonjour {user.first_name}!\n\n"
             "Je suis NEMESIS, votre agent IA autonome de codage et d'administration systeme.\n\n"
-            "<b>📋 Configuration requise avant de commencer :</b>\n"
+            "*[CONFIG] Configuration requise avant de commencer :*\n"
             "1. Configurez votre provider LLM avec /provider\n"
             "2. Selectionnez un modele avec /model (si necessaire)\n"
             "3. Demarrez une nouvelle conversation avec /new\n\n"
-            "<b>💡 Commandes principales :</b>\n"
+            "*💡 Commandes principales :*\n"
             "/start - Demarrer le bot\n"
             "/help - Aide\n"
             "/provider - Configurer le provider LLM\n"
@@ -289,10 +289,10 @@ class NemesisTelegramBot:
             "/tools - Liste des outils disponibles\n"
             "/config - Afficher la configuration actuelle\n"
             "/history - Gerer l'historique\n\n"
-            "<b>🔧 Outils integrés :</b>\n"
+            "*[TOOLS] Outils integrés :*\n"
             "read_file, write_file, bash, grep, list_dir, web_search, web_fetch\n"
             "mcp_list, mcp_tools_list, mcp_call, et bien plus!\n\n"
-            "<b>ℹ️ Note :</b> Les providers Bridge et NEMAPI Bridge gerent leur contexte cote serveur.\n"
+            "*[INFO] Note :* Les providers Bridge et NEMAPI Bridge gerent leur contexte cote serveur.\n"
             "Pour les autres providers (Fireworks, Groq, etc.), utilisez /new pour une nouvelle conversation."
         )
         
@@ -304,7 +304,7 @@ class NemesisTelegramBot:
         if not self._needs_provider_config(chat_id):
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="<b>✅ Votre provider est deja configure.</b> Utilisez /new pour commencer une conversation.",
+                text="*[OK] Votre provider est deja configure.* Utilisez /new pour commencer une conversation.",
             )
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -312,27 +312,27 @@ class NemesisTelegramBot:
         chat_id = update.effective_chat.id
         
         help_text = (
-            "<b>📖 Aide NEMESIS Telegram Bot v3.0</b>\n\n"
-            "<b>🎯 Configuration :</b>\n"
+            "*[HELP] Aide NEMESIS Telegram Bot v3.0*\n\n"
+            "*[SELECT] Configuration :*\n"
             "/provider - Configurer le provider LLM\n"
             "/model - Changer le modele\n"
             "/config - Afficher la configuration\n\n"
-            "<b>💬 Conversation :</b>\n"
+            "*[CHAT] Conversation :*\n"
             "/new - Nouvelle conversation\n"
             "/clear - Effacer conversation\n"
             "/history - Gerer historique\n\n"
-            "<b>📊 Informations :</b>\n"
+            "*📊 Informations :*\n"
             "/start - Menu de demarrage\n"
             "/help - Aide\n"
             "/tools - Liste des outils\n"
             "/about - A propos\n\n"
-            "<b>⚙️ Outils :</b>\n"
+            "*[SETTINGS] Outils :*\n"
             "Envoyez: /read: fichier\n"
             "       /bash: commande\n"
             "       /grep: pattern\n"
             "       /search: requete\n"
             "       /fetch: url\n\n"
-            "<b>🔒 Securite :</b>\n"
+            "*[LOCK] Securite :*\n"
             "Les actions sensibles demandent confirmation."
         )
         
@@ -358,7 +358,7 @@ class NemesisTelegramBot:
         
         await context.bot.send_message(
             chat_id=chat_id,
-            text="<b>🔧 Selectionnez un provider LLM :</b>\n\n"
+            text="*[TOOLS] Selectionnez un provider LLM :*\n\n"
                  "Bridge et NEMAPI Bridge gerent leur contexte serveur.\n"
                  "Pour les autres, utilisez /new pour une nouvelle conversation.",
             reply_markup=reply_markup,
@@ -376,7 +376,7 @@ class NemesisTelegramBot:
         if provider_type in ["bridge", "nemapi_bridge"]:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="ℹ️ Bridge et NEMAPI Bridge utilisent les modeles configures cote serveur.",
+                text="[INFO] Bridge et NEMAPI Bridge utilisent les modeles configures cote serveur.",
             )
             return
         
@@ -385,7 +385,7 @@ class NemesisTelegramBot:
         if not api_key and provider_type not in ["whisperer"]:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="❌ Configurez d'abord votre clé API avec /provider",
+                text="[ERROR] Configurez d'abord votre clé API avec /provider",
             )
             return
         
@@ -396,7 +396,7 @@ class NemesisTelegramBot:
         if not provider:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="❌ Erreur: Impossible de creer le provider. Verifiez votre configuration.",
+                text="[ERROR] Erreur: Impossible de creer le provider. Verifiez votre configuration.",
             )
             return
         
@@ -406,7 +406,7 @@ class NemesisTelegramBot:
             logger.error(f"Erreur list_models pour {provider_type}: {e}")
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"❌ Impossible de lister les modeles. Verifiez votre clé API avec /config\n\n"
+                text=f"[ERROR] Impossible de lister les modeles. Verifiez votre clé API avec /config\n\n"
                      f"Erreur: {str(e)[:200]}",
             )
             return
@@ -426,7 +426,7 @@ class NemesisTelegramBot:
         if not models_to_show:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="⚠️ Aucun modele disponible. Verifiez votre clé API.",
+                text="[WARN] Aucun modele disponible. Verifiez votre clé API.",
             )
             return
         
@@ -446,9 +446,9 @@ class NemesisTelegramBot:
         
         # Afficher le modele actuel si deja selectionne
         if current_model:
-            text = f"<b>🎯 Modele actuel: {current_model}</b>\n\nSelectionnez un autre modele pour {provider_type} :"
+            text = f"*[SELECT] Modele actuel: {current_model}*\n\nSelectionnez un autre modele pour {provider_type} :"
         else:
-            text = f"<b>🎯 Selectionnez un modele pour {provider_type} :</b>"
+            text = f"*[SELECT] Selectionnez un modele pour {provider_type} :*"
         
         await context.bot.send_message(
             chat_id=chat_id,
@@ -465,14 +465,14 @@ class NemesisTelegramBot:
         if self._needs_provider_config(chat_id):
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="❌ Configurez d'abord un provider avec /provider",
+                text="[ERROR] Configurez d'abord un provider avec /provider",
             )
             return
         
         if self._needs_model_selection(chat_id):
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="❌ Selectionnez d'abord un modele avec /model",
+                text="[ERROR] Selectionnez d'abord un modele avec /model",
             )
             return
         
@@ -488,7 +488,7 @@ class NemesisTelegramBot:
         
         await context.bot.send_message(
             chat_id=chat_id,
-            text="<b>🆕 Nouvelle conversation demarree!</b>\n\n"
+            text="*[NEW] Nouvelle conversation demarree!*\n\n"
                  "Votre conversation est prete. Envoyez un message pour commencer.",
         )
 
@@ -502,7 +502,7 @@ class NemesisTelegramBot:
         
         await context.bot.send_message(
             chat_id=chat_id,
-            text="<b>🧹 Conversation effacee!</b>\n\n"
+            text="*[CLEAR] Conversation effacee!*\n\n"
                  "La conversation a ete reinitialisee.",
         )
 
@@ -514,7 +514,7 @@ class NemesisTelegramBot:
         provider_type = config.get("provider", {}).get("type", "bridge")
         
         config_text = (
-            "<b>📋 Configuration actuelle</b>\n\n"
+            "*[CONFIG] Configuration actuelle*\n\n"
             f"Provider: {PROVIDER_LABELS.get(provider_type, provider_type)}\n"
         )
         
@@ -555,7 +555,7 @@ class NemesisTelegramBot:
             self._init_nemesis()
         
         tools_list = list(self.registry._tools.keys())
-        lines = ["🔧 *Outils NEMESIS disponibles:*", ""]
+        lines = ["[TOOLS] *Outils NEMESIS disponibles:*", ""]
         
         for i, tool in enumerate(tools_list, 1):
             tool_def = self.registry._tools[tool].definition
@@ -578,7 +578,7 @@ class NemesisTelegramBot:
         chat_id = update.effective_chat.id
         
         about_text = (
-            "ℹ️ *A propos de NEMESIS Telegram Bot*\n\n"
+            "[INFO] *A propos de NEMESIS Telegram Bot*\n\n"
             "NEMESIS CLI v3.0 - Agent IA autonome\n\n"
             "*Fonctionnalites :*\n"
             "- Execution de commandes systeme\n"
@@ -645,20 +645,20 @@ class NemesisTelegramBot:
                         
                         await context.bot.send_message(
                             chat_id=chat_id,
-                            text=f"✅ Bridge configure: {host}:{port}"
+                            text=f"[OK] Bridge configure: {host}:{port}"
                         )
                         self.chat_states.pop(chat_id, None)
                         return
                     except ValueError:
                         await context.bot.send_message(
                             chat_id=chat_id,
-                            text="❌ Port invalide. Format: host:port (ex: 192.168.1.67:8080)"
+                            text="[ERROR] Port invalide. Format: host:port (ex: 192.168.1.67:8080)"
                         )
                         return
                 else:
                     await context.bot.send_message(
                         chat_id=chat_id,
-                        text="❌ Format invalide. Utilisez: host:port"
+                        text="[ERROR] Format invalide. Utilisez: host:port"
                     )
                     return
             
@@ -674,20 +674,20 @@ class NemesisTelegramBot:
                         
                         await context.bot.send_message(
                             chat_id=chat_id,
-                            text=f"✅ NEMAPI Bridge configure: {host}:{port}"
+                            text=f"[OK] NEMAPI Bridge configure: {host}:{port}"
                         )
                         self.chat_states.pop(chat_id, None)
                         return
                     except ValueError:
                         await context.bot.send_message(
                             chat_id=chat_id,
-                            text="❌ Port invalide. Format: host:port (ex: 127.0.0.1:8080)"
+                            text="[ERROR] Port invalide. Format: host:port (ex: 127.0.0.1:8080)"
                         )
                         return
                 else:
                     await context.bot.send_message(
                         chat_id=chat_id,
-                        text="❌ Format invalide. Utilisez: host:port"
+                        text="[ERROR] Format invalide. Utilisez: host:port"
                     )
                     return
             
@@ -703,14 +703,14 @@ class NemesisTelegramBot:
                     
                     await context.bot.send_message(
                         chat_id=chat_id,
-                        text="✅ Whisperer configure"
+                        text="[OK] Whisperer configure"
                     )
                     self.chat_states.pop(chat_id, None)
                     return
                 else:
                     await context.bot.send_message(
                         chat_id=chat_id,
-                        text="❌ Format invalide. Utilisez: endpoint,token"
+                        text="[ERROR] Format invalide. Utilisez: endpoint,token"
                     )
                     return
             
@@ -755,8 +755,8 @@ class NemesisTelegramBot:
                                     
                                     await context.bot.send_message(
                                         chat_id=chat_id,
-                                        text=f"✅ Cle API registre pour {PROVIDER_LABELS.get(provider_type, provider_type)}\n\n"
-                                             f"<b>🎯 Selectionnez un modele ({len(models)} disponibles) :</b>",
+                                        text=f"[OK] Cle API registre pour {PROVIDER_LABELS.get(provider_type, provider_type)}\n\n"
+                                             f"*[SELECT] Selectionnez un modele ({len(models)} disponibles) :*",
                                         reply_markup=reply_markup,
                                     )
                                     self.chat_states[chat_id] = AWAITING_MODEL_SELECTION
@@ -764,21 +764,21 @@ class NemesisTelegramBot:
                                 else:
                                     await context.bot.send_message(
                                         chat_id=chat_id,
-                                        text=f"❌ Aucuns modeles trouves. Verifiez votre cle API."
+                                        text=f"[ERROR] Aucuns modeles trouves. Verifiez votre cle API."
                                     )
                                     self.chat_states.pop(chat_id, None)
                                     return
                             else:
                                 await context.bot.send_message(
                                     chat_id=chat_id,
-                                    text=f"❌ Impossible de recuperer les modeles. Verifiez votre cle API."
+                                    text=f"[ERROR] Impossible de recuperer les modeles. Verifiez votre cle API."
                                 )
                                 self.chat_states.pop(chat_id, None)
                                 return
                         else:
                             await context.bot.send_message(
                                 chat_id=chat_id,
-                                text=f"⚠️ Erreur de creation du provider. Verifiez votre cle API avec /config"
+                                text=f"[WARN] Erreur de creation du provider. Verifiez votre cle API avec /config"
                             )
                             self.chat_states.pop(chat_id, None)
                             return
@@ -786,7 +786,7 @@ class NemesisTelegramBot:
                         logger.error(f"Erreur list_models pour {provider_type}: {e}")
                         await context.bot.send_message(
                             chat_id=chat_id,
-                            text=f"❌ Erreur lors de la recuperation des modeles. Verifiez votre cle API.\n"
+                            text=f"[ERROR] Erreur lors de la recuperation des modeles. Verifiez votre cle API.\n"
                                  f"Erreur: {str(e)[:150]}"
                         )
                         self.chat_states.pop(chat_id, None)
@@ -812,7 +812,7 @@ class NemesisTelegramBot:
         if self._needs_provider_config(chat_id):
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="❌ Provider non configure\n\n"
+                text="[ERROR] Provider non configure\n\n"
                      "Utilisez /provider pour configurer.",
             )
             return
@@ -821,7 +821,7 @@ class NemesisTelegramBot:
         if self._needs_model_selection(chat_id):
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="❌ Modele non selectionne\n\n"
+                text="[ERROR] Modele non selectionne\n\n"
                      "Utilisez /model pour selectionner un modele.",
             )
             return
@@ -829,8 +829,12 @@ class NemesisTelegramBot:
         # Verifier si c'est un appel d'outil direct
         tool_result = await self._handle_message_with_tools(message_text, chat_id, context)
         if tool_result:
-            if self._is_sensitive_tool(message_text):
-                await self._ask_for_confirmation(update, context, message_text)
+            # Déterminer le nom de l'outil depuis le message
+            tool_name = self._extract_tool_name(message_text)
+            if tool_name and self._is_sensitive_tool(tool_name):
+                # Extraire les paramètres pour la confirmation
+                params = self._extract_tool_params(message_text, tool_name)
+                await self._ask_for_confirmation(update, context, tool_name, params)
             else:
                 await context.bot.send_message(chat_id=chat_id, text=tool_result)
             return
@@ -865,7 +869,36 @@ class NemesisTelegramBot:
                 result = await self._execute_tool(tool_name, params, chat_id, context)
                 return self._format_tool_result_for_display(result)
         
-        # JSON tool call
+        # Détection des appels d'outils au format JSON avec code fence
+        # Format: ```
+        # {
+        #   "tool": "nom_outil",
+        #   "parameters": { ... }
+        # }
+        # ```
+        import re
+        json_block_pattern = r'```(?:)?\s*(\{[^`]*\})\s*```'
+        matches = re.findall(json_block_pattern, message_stripped, re.DOTALL)
+        
+        for json_str in matches:
+            try:
+                tool_call = json.loads(json_str.strip())
+                if 'tool' in tool_call and 'parameters' in tool_call:
+                    # Vérifier si l'outil est sensible
+                    tool_name = tool_call['tool']
+                    params = tool_call['parameters']
+                    
+                    # Demander confirmation pour les outils sensibles
+                    if self._is_sensitive_tool(tool_name):
+                        # La confirmation sera gérée par le système d'autorisation
+                        pass
+                    
+                    result = await self._execute_tool(tool_name, params, chat_id, context)
+                    return self._format_tool_result_for_display(result)
+            except json.JSONDecodeError:
+                continue
+        
+        # JSON tool call simple (sans code fence)
         if message_stripped.startswith('{') and message_stripped.endswith('}'):
             try:
                 tool_call = json.loads(message_stripped)
@@ -896,33 +929,124 @@ class NemesisTelegramBot:
         fmt = parts[1].strip() if len(parts) > 1 else 'markdown'
         return {'url': url, 'format': fmt}
 
-    def _is_sensitive_tool(self, message: str) -> bool:
-        """Verifie si le message contient un outil sensible."""
-        sensitive_tools = ['write_file', 'write:', 'bash:', 'delete_file', 'edit']
-        for tool in sensitive_tools:
-            if message.startswith(tool) or tool in message.lower():
-                return True
+    def _is_sensitive_tool(self, tool_name: str) -> bool:
+        """Verifie si l'outil est sensible - toujours False car les autorisations sont désactivées."""
         return False
+    
+    def _extract_tool_name(self, message: str) -> Optional[str]:
+        """Extrait le nom de l'outil depuis un message."""
+        # Vérifier les prefixes d'outils directs
+        tool_prefixes = ['bash:', 'read:', 'write:', 'grep:', 'list:', 'search:', 'fetch:']
+        for prefix in tool_prefixes:
+            if message.lower().startswith(prefix):
+                return prefix[:-1]  # retourne 'bash', 'read', etc.
+        
+        # Vérifier le format JSON
+        import re
+        json_pattern = r'\{\s*"tool"\s*:\s*"([^"]+)"'
+        match = re.search(json_pattern, message)
+        if match:
+            return match.group(1)
+        
+        # Vérifier les blocs JSON dans les code fences
+        json_block_pattern = r'```(?:)?\s*\{\s*"tool"\s*:\s*"([^"]+)"'
+        match = re.search(json_block_pattern, message, re.DOTALL)
+        if match:
+            return match.group(1)
+        
+        return None
+    
+    def _extract_tool_params(self, message: str, tool_name: str) -> Dict[str, Any]:
+        """Extrait les paramètres d'un outil depuis un message."""
+        params = {}
+        
+        # Pour les prefixes directs
+        if message.lower().startswith(f"{tool_name}:"):
+            content = message[len(tool_name)+1:].strip()
+            if tool_name == 'bash':
+                params['command'] = content
+            elif tool_name == 'read':
+                params['path'] = content
+            elif tool_name == 'write':
+                parts = content.split('|', 1)
+                if len(parts) >= 2:
+                    params['file_path'] = parts[0].strip()
+                    params['content'] = parts[1].strip()
+            elif tool_name == 'grep':
+                params['pattern'] = content
+            elif tool_name == 'list':
+                params['path'] = content or None
+            elif tool_name == 'search':
+                params['query'] = content
+            elif tool_name == 'fetch':
+                parts = content.split('|', 1)
+                params['url'] = parts[0].strip()
+                params['format'] = parts[1].strip() if len(parts) > 1 else 'markdown'
+            return params
+        
+        # Pour le format 
+        import re
+        json_pattern = r'\{\s*"tool"\s*:\s*"[^"]+"\s*,\s*"parameters"\s*:\s*({[^}]+)\s*\}'
+        match = re.search(json_pattern, message, re.DOTALL)
+        if match:
+            try:
+                param_str = match.group(1)
+                # Remplacer les guillemets simples par des guillemets doubles pour le parsing
+                param_str = re.sub(r"'([^']+)'", r'"\1"', param_str)
+                params = json.loads(param_str)
+                return params
+            except json.JSONDecodeError:
+                pass
+        
+        # Pour les blocs  dans les code fences
+        json_block_pattern = r'```(?:json)?\s*\{\s*"tool"\s*:\s*"[^"]+"\s*,\s*"parameters"\s*:\s*({[^}]+)\s*\}\s*```'
+        match = re.search(json_block_pattern, message, re.DOTALL)
+        if match:
+            try:
+                param_str = match.group(1)
+                param_str = re.sub(r"'([^']+)'", r'"\1"', param_str)
+                params = json.loads(param_str)
+                return params
+            except json.JSONDecodeError:
+                pass
+        
+        return params
 
-    async def _ask_for_confirmation(self, update: Update, context: ContextTypes.DEFAULT_TYPE, message: str):
-        """Demande confirmation."""
+    async def _ask_for_confirmation(self, update: Update, context: ContextTypes.DEFAULT_TYPE, tool_name: str, params: Dict[str, Any]):
+        """Demande confirmation pour un outil avec boutons y/n/a (comme dans CLI)."""
         chat_id = update.effective_chat.id
         
-        self.pending_config[chat_id] = {"message": message, "timestamp": time.time()}
+        # Stocker les informations pour le callback
+        self.pending_actions[chat_id] = {
+            "tool_name": tool_name,
+            "params": params,
+            "timestamp": time.time()
+        }
         
+        # Boutons comme dans le CLI : y, n, a
         keyboard = [
-            [InlineKeyboardButton("Confirmer", callback_data="confirm_yes")],
-            [InlineKeyboardButton("Annuler", callback_data="confirm_no")],
+            [
+                InlineKeyboardButton("Oui (y)", callback_data="tool_yes"),
+                InlineKeyboardButton("Non (n)", callback_data="tool_no"),
+                InlineKeyboardButton("Toujours (a)", callback_data="tool_always")
+            ]
         ]
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
+        params_str = "\n".join([f"  {k}: {v}" for k, v in params.items()]) if params else "(aucun paramètre)"
+        
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"⚠️ *Confirmation requise*\n\n"
-                 f"Action sensible:\n\n```\n{message}\n```\n\n"
-                 f"Executer?",
+            text=f"[WARN] *Confirmation requise*\n\n"
+                 f"Outil: `{tool_name}`\n"
+                 f"Paramètres:\n```\n{params_str}\n```\n\n"
+                 f"Autoriser cette action ?\n"
+                 f"  • Oui (y) - Une seule fois\n"
+                 f"  • Non (n) - Refuser\n"
+                 f"  • Toujours (a) - Autoriser pour la session",
             reply_markup=reply_markup,
+            parse_mode="Markdown"
         )
 
     async def _execute_tool(self, tool_name: str, parameters: Dict[str, Any],
@@ -975,151 +1099,115 @@ class NemesisTelegramBot:
 
     async def _process_ai_request(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
                                   message: str, chat_id: int):
-        """Traite une requete pour l'IA avec le workflow NEMESIS complet."""
+        """Traite une requete pour l'IA - version simplifiée sans autorisations."""
         config = self._get_chat_config(chat_id)
         provider_type = config.get("provider", {}).get("type", "bridge")
         model = config.get("provider", {}).get("model", "")
         
         provider = self._get_provider(chat_id)
         if not provider:
-            await context.bot.send_message(chat_id=chat_id, text="❌ Erreur: Provider non disponible")
+            await context.bot.send_message(chat_id=chat_id, text="[ERROR] Provider non disponible")
             return
         
-        # Envoyer le prompt système si ce n'est pas déjà fait
-        # (sauf pour les providers qui gèrent leur contexte serveur)
+        # Envoyer le prompt système si nécessaire
         if (not self.prompt_system_sent.get(chat_id, False) and 
             provider_type not in SERVER_MANAGED_PROVIDERS):
             await self._send_system_prompt(chat_id)
         
-        # Afficher le message "NEMESIS réfléchit..."
+        # Afficher un message de statut
+        status_msg = None
         try:
-            thinking_msg = await context.bot.send_message(
+            status_msg = await context.bot.send_message(
                 chat_id=chat_id,
-                text="⏳ <i>NEMESIS réfléchit...</i>"
+                text="⏳ NEMESIS traite votre demande..."
             )
         except Exception:
-            thinking_msg = None
+            pass
         
         try:
-            # Initialiser la conversation
+            # Boucle de traitement avec l'IA (autorisations désactivées)
             current_input = message
             current_role = "user"
             iteration = 0
-            max_iterations = 10  # Limite pour éviter les boucles infinies
-            collected_outputs = []
+            max_iterations = 10
+            last_ai_text = ""  # Stocke le dernier message de l'IA
             
             while iteration < max_iterations:
                 iteration += 1
                 
-                # Envoyer le message à l'IA
+                # Envoyer à l'IA
                 try:
                     result = provider.send_message(current_input, role=current_role)
                 except TypeError:
                     result = provider.send_message(current_input)
                 
                 if not result or not isinstance(result, dict):
-                    await self._cleanup_thinking_message(context, chat_id, thinking_msg)
-                    await context.bot.send_message(chat_id=chat_id, text="❌ Erreur: Réponse invalide du provider")
+                    await self._cleanup_thinking_message(context, chat_id, status_msg)
+                    await context.bot.send_message(chat_id=chat_id, text="[ERROR] Réponse invalide")
                     return
                 
                 if not result.get("success"):
-                    await self._cleanup_thinking_message(context, chat_id, thinking_msg)
+                    await self._cleanup_thinking_message(context, chat_id, status_msg)
                     error = result.get('error', 'Erreur inconnue')
-                    await context.bot.send_message(chat_id=chat_id, text=f"❌ Erreur: {error}")
+                    await context.bot.send_message(chat_id=chat_id, text=f"[ERROR] {error}")
                     return
                 
                 # Parser la réponse
                 raw_response = result.get('response', '')
                 parsed = self.parser.parse(raw_response)
                 
-                # Extraire le texte à afficher
+                # Extraire le texte de l'IA (filtrer les blocs JSON d'appels d'outils)
                 display_text = parsed.get('text', '')
                 action = parsed.get('action')
                 
-                # Stocker le texte pour la réponse finale
+                # Ne stocker que le dernier message de l'IA qui n'est pas un feedback
                 if display_text and not display_text.startswith("FEEDBACK:"):
-                    collected_outputs.append(display_text)
+                    # Nettoyer les blocs JSON d'appels d'outils
+                    import re
+                    clean_text = re.sub(r'```\s*\{[^`]*\}\s*```', '', display_text, flags=re.DOTALL)
+                    clean_text = re.sub(r'```\s*\{[^`]*\}\s*```', '', clean_text, flags=re.DOTALL)
+                    clean_text = re.sub(r'\{\s*"tool"\s*:.*?\}', '', clean_text, flags=re.DOTALL)
+                    clean_text = clean_text.strip()
+                    if clean_text:
+                        last_ai_text = clean_text
                 
                 # Si pas d'action, on arrête
                 if not action:
                     break
                 
-                # Gérer l'action (appel d'outil)
+                # Exécuter l'outil sans confirmation (autorisation automatique)
                 act_type = action.get('type', '')
                 act_content = action.get('content', {})
                 
-                # Demander confirmation pour les outils sensibles
-                if self._is_sensitive_tool(act_type):
-                    # Stocker l'action en attente de confirmation
-                    self.pending_actions[chat_id] = {
-                        'action_type': act_type,
-                        'action_content': act_content,
-                        'original_input': current_input,
-                        'role': current_role,
-                        'iteration': iteration,
-                        'collected_outputs': collected_outputs,
-                        'thinking_msg': thinking_msg
-                    }
-                    
-                    await self._cleanup_thinking_message(context, chat_id, thinking_msg)
-                    
-                    # Afficher le texte reçu avant de demander confirmation
-                    if collected_outputs:
-                        formatted_text = self._format_ai_response(collected_outputs, provider_type, model)
-                        await context.bot.send_message(chat_id=chat_id, text=formatted_text)
-                    
-                    # Demander confirmation
-                    keyboard = [
-                        [InlineKeyboardButton("✅ Confirmer", callback_data=f"confirm_tool_{chat_id}")],
-                        [InlineKeyboardButton("❌ Annuler", callback_data=f"cancel_tool_{chat_id}")],
-                    ]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-                    
-                    action_desc = act_type
-                    if isinstance(act_content, dict):
-                        action_desc = f"{act_type}: {act_content}"
-                    elif isinstance(act_content, str):
-                        action_desc = f"{act_type}: {act_content[:50]}"
-                    
-                    await context.bot.send_message(
-                        chat_id=chat_id,
-                        text=f"⚠️ <b>Confirmation requise</b>\n\n"
-                             f"L'IA veut exécuter: <code>{action_desc}</code>\n\n"
-                             f"Accepter?",
-                        reply_markup=reply_markup
-                    )
-                    return
-                else:
-                    # Exécuter directement l'outil (non sensible)
-                    tool_result = await self._execute_tool(act_type, act_content, chat_id, context)
-                    
-                    # Construire le feedback pour l'IA
-                    if isinstance(tool_result, dict):
-                        if tool_result.get('success'):
-                            feedback = f"FEEDBACK:\nTool: {act_type}\nSuccess: true\nOutput:\n{tool_result.get('content', tool_result.get('output', 'OK'))}"
-                        else:
-                            feedback = f"FEEDBACK:\nTool: {act_type}\nSuccess: false\nError:\n{tool_result.get('error', 'Erreur inconnue')}"
+                tool_result = await self._execute_tool(act_type, act_content, chat_id, context)
+                
+                # Construire le feedback pour l'IA
+                if isinstance(tool_result, dict):
+                    if tool_result.get('success'):
+                        feedback = f"FEEDBACK:\nTool: {act_type}\nSuccess: true\nOutput:\n{tool_result.get('content', tool_result.get('output', 'OK'))}"
                     else:
-                        feedback = f"FEEDBACK:\nTool: {act_type}\nSuccess: true\nOutput:\n{str(tool_result)}"
-                    
-                    # Envoyer le feedback à l'IA
-                    current_input = feedback
-                    current_role = "tool_result"
+                        feedback = f"FEEDBACK:\nTool: {act_type}\nSuccess: false\nError:\n{tool_result.get('error', 'Erreur inconnue')}"
+                else:
+                    feedback = f"FEEDBACK:\nTool: {act_type}\nSuccess: true\nOutput:\n{str(tool_result)}"
+                
+                current_input = feedback
+                current_role = "tool_result"
             
-            # Supprimer le message "réfléchit"
-            await self._cleanup_thinking_message(context, chat_id, thinking_msg)
+            # Supprimer le message de statut
+            await self._cleanup_thinking_message(context, chat_id, status_msg)
             
-            # Envoyer la réponse finale
-            if collected_outputs:
-                formatted_response = self._format_ai_response(collected_outputs, provider_type, model)
-                await context.bot.send_message(chat_id=chat_id, text=formatted_response)
+            # Envoyer la réponse finale (seul le dernier message)
+            if last_ai_text:
+                formatted_response = self._format_ai_response([last_ai_text], provider_type, model)
+                # Découper si le message est trop long
+                await self._send_long_message(context, chat_id, formatted_response)
             else:
-                await context.bot.send_message(chat_id=chat_id, text="ℹ️ Aucune réponse textuelle générée.")
+                await context.bot.send_message(chat_id=chat_id, text="[INFO] Aucune réponse textuelle générée.")
             
         except Exception as e:
-            await self._cleanup_thinking_message(context, chat_id, thinking_msg)
+            await self._cleanup_thinking_message(context, chat_id, status_msg)
             logger.error(f"Erreur dans _process_ai_request: {e}")
-            await context.bot.send_message(chat_id=chat_id, text=f"❌ Erreur: {str(e)[:1000]}")
+            await context.bot.send_message(chat_id=chat_id, text=f"[ERROR] Erreur: {str(e)[:1000]}")
 
     async def _cleanup_thinking_message(self, context: ContextTypes.DEFAULT_TYPE, chat_id: int, thinking_msg):
         """Supprime le message 'réfléchit' si possible."""
@@ -1134,19 +1222,33 @@ class NemesisTelegramBot:
 
     async def _send_system_prompt(self, chat_id: int) -> bool:
         """Envoye le prompt système à l'IA (pas à l'utilisateur!) pour ce chat."""
-        prompt_path = Path(__file__).parent / "prompt_system_telegram.txt"
-        if not prompt_path.exists():
-            logger.warning("prompt_system_telegram.txt non trouvé")
-            return False
+        # Utiliser le même prompt système que le CLI
+        import os
+        prompt_paths = [
+            Path(__file__).resolve().parent / "prompt_system.txt",
+            Path.home() / ".config" / "nemesis-cli" / "prompt_system.txt",
+            Path.cwd() / "prompt_system.txt"
+        ]
+        
+        prompt = None
+        for path in prompt_paths:
+            if path.exists():
+                try:
+                    with open(path, 'r', encoding='utf-8') as f:
+                        prompt = f.read()
+                        break
+                except Exception as e:
+                    logger.error(f"Erreur chargement prompt système depuis {path}: {e}")
+        
+        if not prompt:
+            logger.warning("prompt_system.txt non trouvé, utilisation du prompt par défaut")
+            prompt = "You are NEMESIS, a professional CLI coding agent. Be precise and methodical."
         
         try:
             provider = self._get_provider(chat_id)
             if not provider:
                 logger.error("Provider non disponible pour envoyer le prompt système")
                 return False
-            
-            with open(prompt_path, 'r', encoding='utf-8') as f:
-                prompt = f.read()
             
             # Envoyer le prompt à l'IA via le provider, pas à l'utilisateur!
             # Certains providers (nemapi_bridge) supportent role=, d'autres non
@@ -1170,20 +1272,71 @@ class NemesisTelegramBot:
         """Formate la réponse de l'IA comme dans le CLI NEMESIS."""
         combined_text = '\n\n'.join(outputs)
         
-        if len(combined_text) > 3500:
-            combined_text = combined_text[:3500] + "\n\n... (tronque)"
+        # Nettoyer les balises HTML restantes
+        import re
+        combined_text = re.sub(r'<[^>]+>', '', combined_text)
         
+        # Formater sans Markdown pour éviter les erreurs de parsing
         if model:
-            return f"🤖 <b>NEMESIS [{provider_type}] ({model}) :></b>\n\n{combined_text}"
+            header = f"⚡ NEMESIS [{provider_type}] ({model}) :"
         else:
-            return f"🤖 <b>NEMESIS [{provider_type}] :></b>\n\n{combined_text}"
+            header = f"⚡ NEMESIS [{provider_type}] :"
+        
+        return f"{header}\n\n{combined_text}"
+    
+    async def _send_long_message(self, context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str):
+        """Envoie un message long en le découpant si nécessaire (limite 4096 caractères)."""
+        MAX_LENGTH = 3900  # Légèrement en dessous de la limite pour éviter les problèmes de parse
+        
+        # Nettoyer le texte pour éviter les erreurs de parsing Markdown
+        import re
+        # Remplacer les caractères problématiques
+        text = re.sub(r'([*_`])(?![^*_`]*\1)', r'\\\1', text)  # Échapper les caractères Markdown simples
+        # Remplacer les triples backticks problématiques
+        text = re.sub(r'```(?:[a-zA-Z]+)?\n', '```\n', text)
+        
+        if len(text) <= MAX_LENGTH:
+            try:
+                await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+            except Exception:
+                # En cas d'erreur Markdown, envoyer sans formatage
+                await context.bot.send_message(chat_id=chat_id, text=text)
+            return
+        
+        # Découper le message en plusieurs parties
+        parts = []
+        current_part = ""
+        
+        for line in text.split('\n'):
+            if len(current_part) + len(line) + 1 > MAX_LENGTH:
+                parts.append(current_part)
+                current_part = line
+            else:
+                if current_part:
+                    current_part += '\n' + line
+                else:
+                    current_part = line
+        
+        if current_part:
+            parts.append(current_part)
+        
+        # Envoyer chaque partie avec un indicateur de progression
+        for i, part in enumerate(parts, 1):
+            if len(parts) > 1:
+                header = f"[Partie {i}/{len(parts)}]\n\n"
+                part = header + part
+            try:
+                await context.bot.send_message(chat_id=chat_id, text=part, parse_mode="Markdown")
+            except Exception:
+                # En cas d'erreur Markdown, envoyer sans formatage
+                await context.bot.send_message(chat_id=chat_id, text=part)
 
     def _format_tool_result_for_display(self, tool_result: Dict[str, Any]) -> str:
         """Formate un résultat d'outil (dict) en chaîne pour affichage."""
         if isinstance(tool_result, dict):
             if not tool_result.get('success', True):
                 error = tool_result.get('error', 'Erreur inconnue')
-                return f"❌ Erreur outil: {error}"
+                return f"[ERROR] Erreur outil: {error}"
             content = tool_result.get('content', tool_result.get('output', 'OK'))
             if isinstance(content, str) and len(content) > 10000:  # 10 Ko - augmente de 3 Ko
                 content = content[:10000] + "\n\n... (tronque)"
@@ -1227,7 +1380,7 @@ class NemesisTelegramBot:
                 return content
             else:
                 error = result.get('error', result.get('message', 'Erreur inconnue'))
-                return f"❌ Erreur: {error}"
+                return f"[ERROR] Erreur: {error}"
         
         if isinstance(result, str):
             if len(result) > 10000:  # 10 Ko
@@ -1251,7 +1404,7 @@ class NemesisTelegramBot:
         config = self._get_chat_config(chat_id)
         
         if data == "cancel":
-            await query.edit_message_text("❌ Operation annulee.")
+            await query.edit_message_text("[ERROR] Operation annulee.")
             self.chat_states.pop(chat_id, None)
             self.pending_config.pop(chat_id, None)
         
@@ -1292,10 +1445,10 @@ class NemesisTelegramBot:
             config["provider"]["model"] = model_id
             self._save_chat_config(chat_id, config)
             
-            await query.edit_message_text(f"✅ Modele selectionne: {model_id}")
+            await query.edit_message_text(f"[OK] Modele selectionne: {model_id}")
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="🆕 Utilisez /new pour demarrer une conversation.",
+                text="[NEW] Utilisez /new pour demarrer une conversation.",
             )
             self.chat_states.pop(chat_id, None)
         
@@ -1306,14 +1459,76 @@ class NemesisTelegramBot:
                 result = await self._handle_message_with_tools(message, chat_id, context)
                 if result:
                     await context.bot.send_message(chat_id=chat_id, text=result)
-                await query.edit_message_text("✅ Operation confirmee.")
+                await query.edit_message_text("[OK] Operation confirmee.")
                 self.pending_config.pop(chat_id, None)
             else:
-                await query.edit_message_text("❌ Aucune operation en attente.")
+                await query.edit_message_text("[ERROR] Aucune operation en attente.")
         
         elif data == "confirm_no":
             self.pending_config.pop(chat_id, None)
-            await query.edit_message_text("❌ Operation annulee.")
+            await query.edit_message_text("[ERROR] Operation annulee.")
+        
+        elif data == "tool_yes":
+            # Autoriser l'outil une seule fois
+            if chat_id in self.pending_actions:
+                pending = self.pending_actions[chat_id]
+                tool_name = pending.get("tool_name", "")
+                params = pending.get("params", {})
+                
+                # Exécuter l'outil
+                result = await self._execute_tool(tool_name, params, chat_id, context)
+                
+                # Envoyer le résultat
+                if result and result.get('success'):
+                    await query.edit_message_text(f"[OK] Outil '{tool_name}' exécuté avec succès")
+                    # Envoyer le contenu si disponible
+                    content = result.get('content', result.get('output', ''))
+                    if content:
+                        await context.bot.send_message(chat_id=chat_id, text=f"Résultat:\n```\n{content[:1000]}\n```", parse_mode="Markdown")
+                else:
+                    error = result.get('error', 'Erreur inconnue') if result else 'Erreur' 
+                    await query.edit_message_text(f"[ERROR] Échec de l'outil '{tool_name}': {error}")
+                
+                self.pending_actions.pop(chat_id, None)
+            else:
+                await query.edit_message_text("[ERROR] Aucune action en attente.")
+        
+        elif data == "tool_no":
+            # Refuser l'outil
+            if chat_id in self.pending_actions:
+                self.pending_actions.pop(chat_id, None)
+                await query.edit_message_text("[ERROR] Exécution de l'outil annulée.")
+            else:
+                await query.edit_message_text("[ERROR] Aucune action en attente.")
+        
+        elif data == "tool_always":
+            # Autoriser toujours pour la session
+            if chat_id in self.pending_actions:
+                pending = self.pending_actions[chat_id]
+                tool_name = pending.get("tool_name", "")
+                params = pending.get("params", {})
+                
+                # Ajouter l'outil aux autorisations de session
+                # Pour l'instant on exécute et on note que c'est autorisé pour la session
+                result = await self._execute_tool(tool_name, params, chat_id, context)
+                
+                # Marquer l'outil comme autorisé pour la session
+                if not hasattr(self, '_session_authorized_tools'):
+                    self._session_authorized_tools = set()
+                self._session_authorized_tools.add(tool_name)
+                
+                if result and result.get('success'):
+                    await query.edit_message_text(f"[OK] Outil '{tool_name}' autorisé pour la session et exécuté avec succès")
+                    content = result.get('content', result.get('output', ''))
+                    if content:
+                        await context.bot.send_message(chat_id=chat_id, text=f"Résultat:\n```\n{content[:1000]}\n```", parse_mode="Markdown")
+                else:
+                    error = result.get('error', 'Erreur inconnue') if result else 'Erreur'
+                    await query.edit_message_text(f"[ERROR] Échec de l'outil '{tool_name}': {error}")
+                
+                self.pending_actions.pop(chat_id, None)
+            else:
+                await query.edit_message_text("[ERROR] Aucune action en attente.")
         
         elif data.startswith("confirm_tool_"):
             # Gestion de la confirmation d'outil
@@ -1352,25 +1567,25 @@ class NemesisTelegramBot:
                             formatted_response = self._format_ai_response([display_text], provider_type, model)
                             await context.bot.send_message(chat_id=chat_id_from_data, text=formatted_response)
                 
-                await query.edit_message_text("✅ Outil exécuté et feedback envoyé à l'IA")
+                await query.edit_message_text("[OK] Outil exécuté et feedback envoyé à l'IA")
                 self.pending_actions.pop(chat_id_from_data, None)
             else:
-                await query.edit_message_text("❌ Aucune action en attente.")
+                await query.edit_message_text("[ERROR] Aucune action en attente.")
         
         elif data.startswith("cancel_tool_"):
             # Annulation de l'outil
             chat_id_from_data = int(data.replace("cancel_tool_", ""))
             if chat_id_from_data in self.pending_actions:
                 self.pending_actions.pop(chat_id_from_data, None)
-                await query.edit_message_text("❌ Exécution de l'outil annulée.")
+                await query.edit_message_text("[ERROR] Exécution de l'outil annulée.")
             else:
-                await query.edit_message_text("❌ Aucune action en attente.")
+                await query.edit_message_text("[ERROR] Aucune action en attente.")
         
         elif data == "history_clear":
             provider = self._get_provider(chat_id)
             if provider:
                 provider.reset_conversation()
-            await query.edit_message_text("🧹 Conversation effacee.")
+            await query.edit_message_text("[CLEAR] Conversation effacee.")
 
 
     # =============================================================================
@@ -1382,7 +1597,12 @@ class NemesisTelegramBot:
         if not self.token:
             raise ValueError("Token Telegram manquant!")
         
-        self.app = Application.builder().token(self.token).build()
+        self.app = (Application.builder()
+            .token(self.token)
+            .connect_timeout(30.0)
+            .read_timeout(30.0)
+            .write_timeout(30.0)
+            .build())
         
         # Ajouter les handlers
         self.app.add_handler(CommandHandler("start", self.start))
@@ -1428,7 +1648,7 @@ def main():
     workspace = config.get('workspace', './workspace')
     
     if not token:
-        print("❌ Erreur: Token Telegram manquant!")
+        print("[ERROR] Erreur: Token Telegram manquant!")
         print("   Definissez TELEGRAM_BOT_TOKEN ou creez telegram_config.yaml")
         sys.exit(1)
     

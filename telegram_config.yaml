@@ -2,7 +2,7 @@
 # Copiez ce fichier en telegram_config.yaml et remplissez avec vos informations
 
 # Token du bot Telegram (obtenu via @BotFather)
-token: "8896042941:AAEoP7VwYvB8JTzy4GwFfZPGqZ_r2nh6DHM"
+token: "8946566036:AAF5a4PMjemI_5kg76f5JmtjOw4mf22nOHY"
 
 # Répertoire de travail pour l'agent
 workspace: "./workspace"
