@@ -2,7 +2,8 @@
 # Copiez ce fichier en telegram_config.yaml et remplissez avec vos informations
 
 # Token du bot Telegram (obtenu via @BotFather)
-token: "8946566036:AAF5a4PMjemI_5kg76f5JmtjOw4mf22nOHY"
+# Set TELEGRAM_BOT_TOKEN in the environment. Never commit a real token.
+token: ""
 
 # Répertoire de travail pour l'agent
 workspace: "./workspace"
@@ -16,8 +17,10 @@ workspace: "./workspace"
 #   - 123456789
 #   - 987654321
 
-# Paramètres du provider LLM (optionnel)
-# provider:
-#   type: "groq"
-#   api_key: "votre_cle_api"
-#   model: "llama-3.1-70b-versatile"
+# Paramètres NEMAPI (optionnel)
+provider:
+  type: "nemapi"
+nemapi:
+  host: "127.0.0.1"
+  port: 8080
+  model: ""

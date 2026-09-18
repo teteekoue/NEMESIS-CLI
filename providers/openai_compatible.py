@@ -1,10 +1,11 @@
-"""Providers OpenAI-compatibles : Groq, Nvidia NIM, Fireworks, Cohere, Together AI.
+"""Providers OpenAI-compatibles optionnels pour intégrations externes.
 Tous utilisent le SDK openai avec des base_url et models differents.
 Supporte le function calling natif quand des outils sont fournis via send_message_with_tools()."""
 
 from typing import Dict, Any, List, Optional
 import json
 import re
+import os
 
 from providers.base import BaseProvider
 
@@ -21,6 +22,7 @@ class OpenAICompatibleProvider(BaseProvider):
 
     DEFAULT_BASE_URL: str = ""
     DEFAULT_MODEL: str = ""
+    DEFAULT_MAX_TOKENS: int = 4096
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
@@ -29,11 +31,16 @@ class OpenAICompatibleProvider(BaseProvider):
                 "Le package 'openai' est requis. Installez-le avec: pip install openai"
             )
 
-        self.api_key = self.provider_config.get("api_key", "")
+        self.api_key = (
+            self.provider_config.get("api_key")
+            or os.environ.get(f"{self.provider_config.get('type', '').upper()}_API_KEY", "")
+        )
         self.base_url = self.provider_config.get("base_url", self.DEFAULT_BASE_URL)
         self.model = self.provider_config.get("model", self.DEFAULT_MODEL)
         self.temperature = float(self.provider_config.get("temperature", 0.7))
-        self.max_tokens = int(self.provider_config.get("max_tokens", 4096))
+        self.max_tokens = int(
+            self.provider_config.get("max_tokens", self.DEFAULT_MAX_TOKENS)
+        )
 
         self._client = OpenAI(base_url=self.base_url, api_key=self.api_key)
         self._conversation = []
@@ -93,11 +100,6 @@ class OpenAICompatibleProvider(BaseProvider):
                 "role": "user" if role == "tool_result" else role,
                 "content": message,
             })
-
-            if len(self._conversation) > 51:
-                system_msgs = [m for m in self._conversation if m["role"] == "system"]
-                rest = [m for m in self._conversation if m["role"] != "system"]
-                self._conversation = system_msgs + rest[-50:]
 
             kwargs = dict(
                 model=self.model,
@@ -201,11 +203,6 @@ class OpenAICompatibleProvider(BaseProvider):
         ) or (
             "LOI 1" in message and "LOI 2" in message
         )
-
-
-class GroqProvider(OpenAICompatibleProvider):
-    DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
-    DEFAULT_MODEL = "llama-3.1-8b-instant"
 
 
 class NvidiaNimProvider(OpenAICompatibleProvider):

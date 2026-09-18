@@ -6,6 +6,7 @@ No emojis. Responsive panels sized to the current terminal width.
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import List, Optional
 
 from rich.console import Console, Group
@@ -169,35 +170,42 @@ class ChatUI:
             yield
 
     def tool_start(self, tool_name: str, params: dict):
-        """Compact tool-call frame sized to terminal."""
-        w = _content_width(self.console)
-        table = Table(
-            box=SIMPLE,
-            border_style=Catppuccin.SURFACE1,
-            width=w,
-            show_header=False,
-            show_edge=True,
-            pad_edge=False,
-            padding=(0, 1),
-            collapse_padding=True,
-            expand=True,
+        """Render one compact, human-readable tool invocation line."""
+        label = _truncate(self._tool_invocation(tool_name, params), _term_width(self.console) - 8)
+        self.console.print(
+            Text.assemble(
+                ("  ", Catppuccin.OVERLAY0),
+                ("◆ ", f"bold {Catppuccin.MAUVE}"),
+                ("tool ", Catppuccin.OVERLAY0),
+                (label, Catppuccin.TEXT),
+            )
         )
-        key_w = min(18, max(8, w // 5))
-        table.add_column("key", style=f"bold {Catppuccin.MAUVE}", justify="right", no_wrap=True, width=key_w)
-        table.add_column("value", style=Catppuccin.SUBTEXT0, overflow="fold", ratio=1)
 
-        table.title = Text(f" {tool_name} ", style=f"bold {Catppuccin.MAUVE}")
-
-        if params:
-            for k, v in list(params.items())[:12]:
-                table.add_row(str(k), _truncate(str(v), max(40, w - key_w - 8)))
-        else:
-            table.add_row("-", "(no params)")
-        self.console.print(table)
+    def _tool_invocation(self, tool_name: str, params: dict) -> str:
+        """Summarize parameters without dumping a tool schema into the chat."""
+        params = params if isinstance(params, dict) else {}
+        if tool_name in {"read_file", "read"}:
+            target = params.get("path") or params.get("file_path") or params.get("paths")
+            return f"read {_truncate(str(target or 'file'), 120)}"
+        if tool_name in {"write_file", "write"}:
+            target = params.get("file_path") or params.get("path")
+            return f"write {_truncate(str(target or 'file'), 120)}"
+        if tool_name in {"edit", "search_replace", "replace"}:
+            target = params.get("file_path") or params.get("path")
+            return f"edit {_truncate(str(target or 'file'), 120)}"
+        if tool_name == "delete_file":
+            return f"delete {_truncate(str(params.get('path') or params.get('file_path') or 'file'), 120)}"
+        if tool_name == "bash":
+            return f"bash  {_truncate(str(params.get('command') or 'command'), 180)}"
+        if tool_name in {"grep", "glob", "list_dir"}:
+            value = params.get("pattern") or params.get("path") or params.get("query") or "*"
+            return f"{tool_name} {_truncate(str(value), 140)}"
+        if tool_name in {"web_search", "web_fetch"}:
+            value = params.get("query") or params.get("url") or ""
+            return f"{tool_name} {_truncate(str(value), 140)}"
+        return f"{tool_name} {_truncate(' '.join(f'{k}={v}' for k, v in params.items()), 140)}".rstrip()
 
     def tool_result(self, result: dict, tool_name: str = ""):
-        w = _content_width(self.console)
-
         if hasattr(result, "success"):
             success = bool(result.success)
         elif isinstance(result, dict):
@@ -207,104 +215,27 @@ class ChatUI:
 
         color = Catppuccin.GREEN if success else Catppuccin.RED
         status = "ok" if success else "fail"
-
-        # read_file : afficher seulement un message de confirmation, pas le contenu
-        if tool_name == "read_file":
-            self.console.print(
-                Panel(
-                    Text("Fichier lu avec succes" if success else f"Echec de lecture: {result.get('error', '')}",
-                         style=color),
-                    border_style=color,
-                    padding=(0, 1),
-                    width=w,
-                    box=SQUARE,
-                    title=Text(f" {tool_name} · {status} ", style=f"bold {color}"),
-                    title_align="left",
-                )
-            )
-            return
-
-        # edit : afficher un diff structuré avec rouge/vert
-        if tool_name == "edit":
-            self._display_edit_diff(result, w, color, status)
-            return
-
         output = ""
-        if tool_name == "grep" and hasattr(result, "matches"):
-            if result.matches:
-                output = "\n".join(str(m) for m in result.matches)
-        elif tool_name == "list_dir" and hasattr(result, "output"):
+        if isinstance(result, dict):
+            output = result.get("output") or result.get("stdout") or result.get("error") or ""
+        elif hasattr(result, "output"):
             output = result.output or ""
-        elif isinstance(result, dict):
-            output = result.get("output") or result.get("stdout") or ""
-            if not output and result.get("error"):
-                output = str(result["error"])
-
-        output = (output or "").rstrip()
-        display_tools = {
-            "grep", "list_dir", "web_fetch", "web_search",
-            "mcp_list", "mcp_tools_list", "mcp_call", "glob", "git", "todo",
-            "list_agents", "check_reports", "skills_list", "delegate_task",
-            "apply_patch",
-        }
-
-        if tool_name != "bash":
-            if tool_name in display_tools and output:
-                lines = output.splitlines()
-                max_lines = 200
-                if len(lines) > max_lines:
-                    display = "\n".join(lines[:max_lines]) + f"\n... ({len(lines) - max_lines} more lines)"
-                else:
-                    display = output
-                self.console.print(
-                    Panel(
-                        Text(display, style=Catppuccin.TEXT),
-                        border_style=color,
-                        padding=(0, 1),
-                        width=w,
-                        box=SQUARE,
-                        title=Text(f" {tool_name} · {status} ", style=f"bold {color}"),
-                        title_align="left",
-                    )
-                )
-            else:
-                self.console.print(Text(f"  {tool_name}: {status}", style=color))
-            return
-
-        # bash : afficher la sortie directement dans un panel
-        if not output:
-            self.console.print(
-                Panel(
-                    Text("(aucune sortie)", style=Catppuccin.OVERLAY0),
-                    border_style=color,
-                    padding=(0, 1),
-                    width=w,
-                    box=SQUARE,
-                    title=Text(f" bash · {status} ", style=f"bold {color}"),
-                    title_align="left",
-                )
-            )
-            return
-
-        lines = output.splitlines()
-        hidden = 0
-        if len(lines) > MAX_BASH_LINES:
-            hidden = len(lines) - MAX_BASH_LINES
-            lines = lines[-MAX_BASH_LINES:]
-        display = "\n".join(lines)
-        if hidden:
-            display = f"... {hidden} earlier line(s) hidden\n" + display
-        self.console.print(
-            Panel(
-                Text(display, style=Catppuccin.TEXT),
-                border_style=color,
-                padding=(0, 1),
-                width=w,
-                box=SQUARE,
-                title=Text(f" bash · {status} ", style=f"bold {color}"),
-                title_align="left",
-            )
+        detail = ""
+        line = Text.assemble(
+            ("  ", Catppuccin.OVERLAY0),
+            ("✓ " if success else "✗ ", f"bold {color}"),
+            (tool_name or "tool", Catppuccin.TEXT),
+            (f" · {status}", Catppuccin.SUBTEXT0),
         )
+        # OSC-8 links are handled by modern terminals. Bash output is stored in
+        # a local file and the compact status line opens it when clicked.
+        output_path = result.get("output_path") if isinstance(result, dict) else None
+        if tool_name == "bash" and output_path:
+            path = Path(output_path).resolve()
+            # VS Code handles this URI directly with Ctrl/Cmd+click. Other
+            # OSC-8 terminals can still use the standard file URI fallback.
+            line.stylize(f'link "vscode://file{path}"')
+        self.console.print(line)
 
     def _display_edit_diff(self, result: dict, w: int, color: str, status: str):
         """Affiche un diff structuré pour l'édition."""
@@ -382,35 +313,15 @@ class ChatUI:
             )
         )
 
-    def auth_prompt(self, tool_name: str, params: dict) -> Panel:
-        """Mini frame for tool authorization."""
-        w = min(_content_width(self.console), 72)
-        lines = [
-            Text(f"Tool: ", style=Catppuccin.SUBTEXT0) + Text(tool_name, style=f"bold {Catppuccin.MAUVE}"),
-        ]
-        if params:
-            for k, v in list(params.items())[:8]:
-                lines.append(
-                    Text(f"  {k}: ", style=Catppuccin.OVERLAY0)
-                    + Text(_truncate(str(v), max(30, w - 12)), style=Catppuccin.TEXT)
-                )
-        lines.append(Text(""))
-        lines.append(
-            Text("y", style=f"bold {Catppuccin.GREEN}")
-            + Text(" once   ", style=Catppuccin.SUBTEXT0)
-            + Text("a", style=f"bold {Catppuccin.BLUE}")
-            + Text(" always   ", style=Catppuccin.SUBTEXT0)
-            + Text("n", style=f"bold {Catppuccin.RED}")
-            + Text(" deny", style=Catppuccin.SUBTEXT0)
-        )
-        return Panel(
-            Group(*lines),
-            title=Text(" authorization ", style=f"bold {Catppuccin.YELLOW}"),
-            title_align="left",
-            border_style=Catppuccin.YELLOW,
-            padding=(0, 1),
-            width=w,
-            box=ROUNDED,
+    def auth_prompt(self, tool_name: str, params: dict) -> Text:
+        """Render authorization as one compact line instead of a panel."""
+        summary = _truncate(self._tool_invocation(tool_name, params), _term_width(self.console) - 34)
+        return Text.assemble(
+            ("  ", Catppuccin.OVERLAY0),
+            ("! ", f"bold {Catppuccin.YELLOW}"),
+            ("authorize ", Catppuccin.SUBTEXT0),
+            (summary, Catppuccin.TEXT),
+            ("  [y] once  [a] always  [n] deny", Catppuccin.SUBTEXT0),
         )
 
     def live_terminal(self, title: str = "bash") -> LiveTerminal:
@@ -448,11 +359,38 @@ class ChatUI:
         self.console.print(Panel(table, title=Text(" plan ", style=f"bold {Catppuccin.MAUVE}"),
                                  border_style=Catppuccin.SURFACE1, box=ROUNDED, padding=(0, 1)))
 
-    def welcome(self, version: str = "2.1.0", provider: str = "", target: str = ""):
+    def welcome(
+        self,
+        version: str | None = None,
+        provider: str = "",
+        target: str = "",
+        model: str = "",
+        workspace: str = "",
+        connected: bool | None = None,
+    ):
+        from .header import get_header
+
+        del version
+        self.console.print(
+            get_header(
+                provider=provider,
+                target=target,
+                model=model,
+                workspace=workspace,
+                connected=connected,
+            )
+        )
+        self.console.print(
+            Text("  Entrez votre demande ou utilisez /help pour explorer l'interface.",
+                 style=Catppuccin.SUBTEXT0)
+        )
+        self.console.print()
+
+    def _legacy_welcome(self, version: str = "", provider: str = "", target: str = ""):
+        """Compatibility shim for integrations that used the old implementation."""
         w = _content_width(self.console)
         brand = Text()
         brand.append("NEMESIS", style=f"bold {Catppuccin.MAUVE}")
-        brand.append(f"  v{version}", style=Catppuccin.OVERLAY0)
 
         lines = [
             brand,
@@ -471,7 +409,5 @@ class ChatUI:
                 box=ROUNDED,
             )
         )
-        self.console.print()
-
     def clear(self):
         self.console.clear()

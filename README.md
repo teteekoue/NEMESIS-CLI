@@ -1,4 +1,4 @@
-# NEMESIS CLI v2.1.0
+# NEMESIS-CLI
 
 **Agent IA Autonome de Codage et d'Administration Système**
 
@@ -37,7 +37,7 @@ Développé par **TEJF - L'Aigle de la Justice**
 - Gestion de processus et tâches en arrière-plan
 - Support du **Model Context Protocol (MCP)**
 - Interface terminal moderne avec **Rich** et **prompt_toolkit**
-- Streaming temps réel des sorties de commandes
+- Conservation du contexte côté serveur NEMAPI
 - Gestion interactive des commandes nécessitant des entrées utilisateur
 
 ---
@@ -73,11 +73,10 @@ Les commandes Bash sont exécutées avec :
 
 NEMESIS supporte plusieurs formats de réponse :
 - JSON strict (format principal)
-- YAML
-- JSON relaxé
-- Blocs nus
-- XML
-- Regex fallback
+- JSON strict et JSON relaxé
+- Appels groupés et appels tronqués
+- XML/Qwen tolérant
+- Nettoyage du protocole avant affichage
 
 ### Appels d'outils par lot
 
@@ -120,10 +119,7 @@ nemesis-cli/
 │       └── theme.py         # Thème Catppuccin
 ├── providers/
 │   ├── base.py             # Provider de base
-│   ├── bridge.py           # Provider Bridge
-│   ├── nemapi_bridge.py    # Provider NemAPI Bridge
-│   ├── openai_compatible.py # Provider OpenAI Compatible
-│   └── whisperer.py         # Provider Whisperer
+│   └── nemapi_v3.py        # Provider NEMAPI (nom public : NEMAPI)
 ├── tests/                  # Tests unitaires
 └── tools_library/          # Bibliothèque de skills extensibles
 ```
@@ -147,7 +143,6 @@ pyyaml>=6.0.0
 requests>=2.31.0
 h11>=0.14.0
 httpcore>=1.0.0
-groq>=0.1.0
 click>=8.0.0
 ```
 
@@ -202,11 +197,10 @@ Le script d'installation :
 Le fichier de configuration principal contrôle le comportement de NEMESIS :
 
 ```yaml
-# Provider unique NEMAPI
 provider:
   type: nemapi
-  
-# Configuration NEMAPI
+  model: qwen-chat
+
 nemapi:
   host: 127.0.0.1
   port: 8080
@@ -230,6 +224,12 @@ mcp:
     - calculator
     - filesystem
 ```
+
+NEMAPI expose la liste réelle de ses modèles via `GET /v1/models`. La
+configuration peut laisser `model` vide pour utiliser le premier modèle
+retourné, ou préciser l'identifiant d'un modèle disponible. NEMESIS envoie
+uniquement le message courant : l'historique et le contexte du prompt système
+sont conservés par NEMAPI.
 
 ### Fichier `mcp_config.yaml`
 
@@ -421,12 +421,18 @@ NEMESIS propose des commandes spéciales préfixées par `/` :
 | Commande | Description |
 |----------|-------------|
 | `/help` | Affiche la liste des commandes disponibles |
+| `/status` | Affiche la connexion, le modèle, le endpoint et le workspace |
+| `/todo` | Affiche le plan de travail courant |
+| `/model` | Sélectionne un modèle NEMAPI depuis `/v1/models` |
 | `/provider` | Configure le provider IA |
 | `/tools` | Liste les outils disponibles |
+| `/config` | Affiche la configuration active |
+| `/stats` | Affiche les statistiques de session |
+| `/history` | Consulte ou gère l'historique |
 | `/agents` | Gère les sous-agents (délégation) |
 | `/skills` | Gère les compétences additionnelles |
 | `/stats` | Affiche les métriques de la session |
-| `/clear` | Efface l'historique de la session |
+| `/clear` | Réinitialise l'affichage du terminal |
 | `/exit` | Quitte NEMESIS |
 
 ### Utilisation des Commandes Slash
@@ -435,8 +441,8 @@ NEMESIS propose des commandes spéciales préfixées par `/` :
 # Afficher l'aide
 /help
 
-# Configurer un provider
-/provider type=bridge host=192.168.1.67 port=8080
+# Sélectionner un modèle NEMAPI depuis le serveur
+/model
 
 # Lister les outils
 /tools

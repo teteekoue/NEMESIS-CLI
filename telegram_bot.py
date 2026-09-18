@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-"""Bot Telegram pour NEMESIS CLI v3.0 - Agent IA moderne avec gestion complete des providers et conversations.
+"""Bot Telegram NEMESIS-CLI — interface distante de l'agent autonome.
 
 Structure de configuration (identique au CLI NEMESIS) :
-- provider.type: type de provider (bridge, nemapi_bridge, fireworks, groq, etc.)
-- provider.api_key: cle API pour les providers tiers
-- provider.model: modele selectionne
-- provider.endpoint: endpoint pour whisperer
-- bridge: {host, port} pour BridgeProvider
-- nemapi_bridge: {host, port} pour NemapiBridgeProvider
+- provider.type: toujours ``nemapi``
+- nemapi: {host, port, model}
 - security.workspace: repertoire de travail
 
 Les configurations du bot sont stockees dans telegram_bot_configs/{chat_id}.yaml
@@ -71,7 +67,6 @@ AWAITING_MODEL_SELECTION = 2
 AWAITING_CONFIRMATION = 3
 AWAITING_BRIDGE_HOST = 4
 AWAITING_NEMAPI_HOST = 5
-AWAITING_WHISPERER_CONFIG = 6
 
 # Repertoire de stockage des configurations du bot
 BOT_CONFIG_DIR = Path(__file__).parent / "telegram_bot_configs"
@@ -99,8 +94,8 @@ def load_chat_config(chat_id: int) -> Dict[str, Any]:
     # Configuration par defaut (identique au CLI)
     default_config = {
         "provider": {"type": "nemapi"},
-        "nemapi": {"host": "127.0.0.1", "port": 8080},
-        "security": {"workspace": "./workspace"},
+        "nemapi": {"host": "127.0.0.1", "port": 8080, "model": ""},
+        "security": {"workspace": str(Path("./workspace").resolve())},
     }
     
     if not config_path.exists():
@@ -112,20 +107,33 @@ def load_chat_config(chat_id: int) -> Dict[str, Any]:
             loaded = yaml.safe_load(f)
             if not loaded:
                 return default_config
-            # Fusionner avec la config par defaut pour les champs manquants
-            for key, value in default_config.items():
-                if key not in loaded:
-                    loaded[key] = value
-                elif isinstance(value, dict) and key in default_config:
-                    for subkey, subvalue in default_config[key].items():
-                        if subkey not in loaded.get(key, {}):
-                            loaded.setdefault(key, {})[subkey] = subvalue
-            if loaded.get("provider", {}).get("type") != "nemapi":
-                loaded["provider"]["type"] = "nemapi"
-                legacy = loaded.get("nemapi_v3") or loaded.get("nemapi_bridge") or loaded.get("bridge") or {}
-                loaded.setdefault("nemapi", legacy)
-            return loaded
-    except Exception as e:
+            if not isinstance(loaded, dict):
+                loaded = {}
+            # Migrate old per-chat configurations to the single public provider.
+            legacy = loaded.get("nemapi_v3") or loaded.get("nemapi_bridge") or loaded.get("bridge") or {}
+            provider = loaded.get("provider") if isinstance(loaded.get("provider"), dict) else {}
+            nemapi = loaded.get("nemapi") if isinstance(loaded.get("nemapi"), dict) else {}
+            if legacy and not nemapi:
+                nemapi = dict(legacy)
+            for key in ("host", "port", "model"):
+                if provider.get(key) is not None and nemapi.get(key) in (None, ""):
+                    nemapi[key] = provider[key]
+            normalized = {
+                "provider": {"type": "nemapi"},
+                "nemapi": {
+                    "host": str(nemapi.get("host") or "127.0.0.1"),
+                    "port": int(nemapi.get("port") or 8080),
+                    "model": str(nemapi.get("model") or ""),
+                },
+                "security": {
+                    "workspace": str(
+                        (loaded.get("security") or {}).get("workspace")
+                        or default_config["security"]["workspace"]
+                    )
+                },
+            }
+            return normalized
+    except (OSError, ValueError, TypeError, yaml.YAMLError) as e:
         logger.error(f"Erreur chargement config pour chat {chat_id}: {e}")
         return default_config
 
@@ -150,17 +158,27 @@ def save_chat_config(chat_id: int, config: Dict[str, Any]) -> bool:
 # =============================================================================
 
 class NemesisTelegramBot:
-    """Bot Telegram qui integre l'agent NEMESIS v3.0."""
+    """Bot Telegram qui integre l'agent NEMESIS-CLI."""
 
-    def __init__(self, token: str, workspace: str = "./workspace"):
+    def __init__(self, token: str, workspace: str = "./workspace",
+                 default_config: Optional[Dict[str, Any]] = None):
         """Initialise le bot Telegram NEMESIS."""
         self.token = token
         self.workspace = workspace
+        defaults = default_config or {}
+        default_nemapi = defaults.get("nemapi", {}) if isinstance(defaults, dict) else {}
+        self.default_nemapi = {
+            "host": str(default_nemapi.get("host") or "127.0.0.1"),
+            "port": int(default_nemapi.get("port") or 8080),
+            "model": str(default_nemapi.get("model") or ""),
+        }
         self.bot: Optional[Bot] = None
         self.app: Optional[Application] = None
         self.registry = None
         self.executor = ToolBridge(workspace=self.workspace)
         self.parser = ActionParser()
+        self.providers: Dict[int, Any] = {}
+        self._session_authorized_tools: Dict[int, set] = {}
         
         # Etats de conversation par chat
         self.chat_states: Dict[int, int] = {}
@@ -185,7 +203,13 @@ class NemesisTelegramBot:
 
     def _get_chat_config(self, chat_id: int) -> Dict[str, Any]:
         """Charge la configuration pour un chat."""
-        return load_chat_config(chat_id)
+        config = load_chat_config(chat_id)
+        path = get_chat_config_path(chat_id)
+        if not path.exists():
+            config["nemapi"].update(self.default_nemapi)
+            config["security"]["workspace"] = self.workspace
+            save_chat_config(chat_id, config)
+        return config
 
     def _save_chat_config(self, chat_id: int, config: Dict[str, Any]) -> bool:
         """Sauvegarde la configuration pour un chat."""
@@ -193,9 +217,13 @@ class NemesisTelegramBot:
 
     def _get_provider(self, chat_id: int) -> Any:
         """Cree et retourne le provider pour un chat."""
+        if chat_id in self.providers:
+            return self.providers[chat_id]
         config = self._get_chat_config(chat_id)
         try:
-            return create_provider(config)
+            provider = create_provider(config)
+            self.providers[chat_id] = provider
+            return provider
         except Exception as e:
             logger.error(f"Erreur creation provider pour chat {chat_id}: {e}")
             return None
@@ -203,57 +231,16 @@ class NemesisTelegramBot:
     def _needs_provider_config(self, chat_id: int) -> bool:
         """Verifie si le provider a besoin d'etre configure."""
         config = self._get_chat_config(chat_id)
-        provider_type = config.get("provider", {}).get("type", "bridge")
-        
-        if provider_type in ["bridge", "nemapi_bridge"]:
-            return False
-        if provider_type == "whisperer":
-            return not config.get("provider", {}).get("endpoint")
-        
-        # Pour Fireworks, Groq, OpenRouter, etc. - verifier api_key
-        api_key = config.get("provider", {}).get("api_key", "")
-        return not api_key
+        return config.get("provider", {}).get("type") != "nemapi"
 
     def _get_default_model_for_provider(self, provider_type: str) -> str:
         """Retourne le modele par defaut pour un provider donne."""
-        from providers.openai_compatible import (
-            GroqProvider,
-            NvidiaNimProvider,
-            XaiProvider,
-            OpenRouterProvider,
-            OllamaProvider,
-            FireworksProvider,
-            CohereProvider,
-        )
-        
-        provider_defaults = {
-            "groq": GroqProvider.DEFAULT_MODEL,
-            "nvidia_nim": NvidiaNimProvider.DEFAULT_MODEL,
-            "nvidia": NvidiaNimProvider.DEFAULT_MODEL,
-            "xai": XaiProvider.DEFAULT_MODEL,
-            "openrouter": OpenRouterProvider.DEFAULT_MODEL,
-            "ollama": OllamaProvider.DEFAULT_MODEL,
-            "fireworks": FireworksProvider.DEFAULT_MODEL,
-            "cohere": CohereProvider.DEFAULT_MODEL,
-        }
-        return provider_defaults.get(provider_type, "")
+        return "qwen-chat" if provider_type == "nemapi" else ""
     
     def _needs_model_selection(self, chat_id: int) -> bool:
         """Verifie si le modele doit etre selectionne."""
         config = self._get_chat_config(chat_id)
-        provider_type = config.get("provider", {}).get("type", "bridge")
-        
-        if provider_type in ["bridge", "nemapi_bridge"]:
-            return False
-        
-        model = config.get("provider", {}).get("model", "")
-        
-        # Pour les providers tiers (Fireworks, Groq, etc.), on DOIT toujours selectionner un modele
-        # Pas de modele par defaut automatique - l'utilisateur doit choisir
-        if provider_type in ["fireworks", "groq", "openrouter", "xai", "cohere", "ollama", "nvidia", "nvidia_nim"]:
-            return not model
-        
-        return not model
+        return not config.get("nemapi", {}).get("model")
 
 
     # =============================================================================
@@ -266,13 +253,11 @@ class NemesisTelegramBot:
         user = update.effective_user
         
         welcome_message = (
-            "*NEMESIS Bienvenue sur NEMESIS Telegram Bot v3.0*\n\n"
+            "*NEMESIS-CLI — agent autonome de codage*\n\n"
             f"Bonjour {user.first_name}!\n\n"
             "Je suis NEMESIS, votre agent IA autonome de codage et d'administration systeme.\n\n"
-            "*[CONFIG] Configuration requise avant de commencer :*\n"
-            "1. Configurez votre provider LLM avec /provider\n"
-            "2. Selectionnez un modele avec /model (si necessaire)\n"
-            "3. Demarrez une nouvelle conversation avec /new\n\n"
+            "Provider actif : NEMAPI. Configurez son endpoint avec /provider puis "
+            "choisissez un modele avec /model.\n\n"
             "*💡 Commandes principales :*\n"
             "/start - Demarrer le bot\n"
             "/help - Aide\n"
@@ -286,8 +271,8 @@ class NemesisTelegramBot:
             "*[TOOLS] Outils integrés :*\n"
             "read_file, write_file, bash, grep, list_dir, web_search, web_fetch\n"
             "mcp_list, mcp_tools_list, mcp_call, et bien plus!\n\n"
-            "*[INFO] Note :* Les providers Bridge et NEMAPI Bridge gerent leur contexte cote serveur.\n"
-            "Pour les autres providers (Fireworks, Groq, etc.), utilisez /new pour une nouvelle conversation."
+            "*[INFO] Les appels d'outils et les tours internes restent invisibles : "
+            "je vous renvoie uniquement la synthese finale.*"
         )
         
         await context.bot.send_message(
@@ -306,7 +291,7 @@ class NemesisTelegramBot:
         chat_id = update.effective_chat.id
         
         help_text = (
-            "*[HELP] Aide NEMESIS Telegram Bot v3.0*\n\n"
+            "*[HELP] Aide NEMESIS-CLI Telegram*\n\n"
             "*[SELECT] Configuration :*\n"
             "/provider - Configurer le provider LLM\n"
             "/model - Changer le modele\n"
@@ -339,22 +324,18 @@ class NemesisTelegramBot:
         """Gere la commande /provider."""
         chat_id = update.effective_chat.id
         
-        available_providers = list_providers()
-        
-        keyboard = []
-        for provider_type in available_providers:
-            label = PROVIDER_LABELS.get(provider_type, provider_type)
-            keyboard.append([InlineKeyboardButton(label, callback_data=f"provider_{provider_type}")])
-        
-        keyboard.append([InlineKeyboardButton("Annuler", callback_data="cancel")])
+        config = self._get_chat_config(chat_id)
+        current = config.get("nemapi", {})
+        keyboard = [[InlineKeyboardButton("Configurer NEMAPI", callback_data="provider_nemapi")],
+                    [InlineKeyboardButton("Annuler", callback_data="cancel")]]
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await context.bot.send_message(
             chat_id=chat_id,
-            text="*[TOOLS] Selectionnez un provider LLM :*\n\n"
-                 "Bridge et NEMAPI Bridge gerent leur contexte serveur.\n"
-                 "Pour les autres, utilisez /new pour une nouvelle conversation.",
+            text=f"*[CONFIG] Provider unique : NEMAPI*\n\n"
+                 f"Endpoint actuel : {current.get('host', '127.0.0.1')}:{current.get('port', 8080)}\n"
+                 "Choisissez Configurer pour modifier l'endpoint.",
             reply_markup=reply_markup,
         )
         
@@ -365,26 +346,10 @@ class NemesisTelegramBot:
         chat_id = update.effective_chat.id
         
         config = self._get_chat_config(chat_id)
-        provider_type = config.get("provider", {}).get("type", "bridge")
-        
-        if provider_type in ["bridge", "nemapi_bridge"]:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="[INFO] Bridge et NEMAPI Bridge utilisent les modeles configures cote serveur.",
-            )
-            return
-        
-        # Vérifier qu'un provider est configuré avec une clé API
-        api_key = config.get("provider", {}).get("api_key", "")
-        if not api_key and provider_type not in ["whisperer"]:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="[ERROR] Configurez d'abord votre clé API avec /provider",
-            )
-            return
+        provider_type = "nemapi"
         
         # Vérifier le modele actuel
-        current_model = config.get("provider", {}).get("model", "")
+        current_model = config.get("nemapi", {}).get("model", "")
         
         provider = self._get_provider(chat_id)
         if not provider:
@@ -440,9 +405,9 @@ class NemesisTelegramBot:
         
         # Afficher le modele actuel si deja selectionne
         if current_model:
-            text = f"*[SELECT] Modele actuel: {current_model}*\n\nSelectionnez un autre modele pour {provider_type} :"
+            text = f"*[SELECT] Modele actuel: {current_model}*\n\nSelectionnez un autre modele pour NEMAPI :"
         else:
-            text = f"*[SELECT] Selectionnez un modele pour {provider_type} :*"
+            text = "*[SELECT] Selectionnez un modele NEMAPI :*"
         
         await context.bot.send_message(
             chat_id=chat_id,
@@ -470,12 +435,9 @@ class NemesisTelegramBot:
             )
             return
         
-        provider_type = self._get_chat_config(chat_id).get("provider", {}).get("type", "bridge")
-        
-        if provider_type not in SERVER_MANAGED_PROVIDERS:
-            provider = self._get_provider(chat_id)
-            if provider:
-                provider.reset_conversation()
+        provider = self._get_provider(chat_id)
+        if provider:
+            provider.reset_conversation()
         
         # Réinitialiser le flag de prompt système pour une nouvelle conversation
         self.prompt_system_sent[chat_id] = False
@@ -505,34 +467,16 @@ class NemesisTelegramBot:
         chat_id = update.effective_chat.id
         
         config = self._get_chat_config(chat_id)
-        provider_type = config.get("provider", {}).get("type", "bridge")
+        provider_type = "nemapi"
         
         config_text = (
             "*[CONFIG] Configuration actuelle*\n\n"
             f"Provider: {PROVIDER_LABELS.get(provider_type, provider_type)}\n"
         )
         
-        if provider_type not in ["bridge", "nemapi_bridge"]:
-            provider_config = config.get("provider", {})
-            model = provider_config.get("model", "Non selectionne")
-            config_text += f"Modele: {model}\n"
-            api_key = provider_config.get("api_key", "")
-            if api_key:
-                config_text += f"Cle API: {'*' * len(api_key)}\n"
-            if provider_type == "whisperer":
-                endpoint = provider_config.get("endpoint", "")
-                if endpoint:
-                    config_text += f"Endpoint: {endpoint}\n"
-        
-        if provider_type == "bridge":
-            bridge_config = config.get("bridge", {})
-            config_text += f"Host: {bridge_config.get('host', 'N/A')}\n"
-            config_text += f"Port: {bridge_config.get('port', 'N/A')}\n"
-        
-        if provider_type == "nemapi_bridge":
-            nb_config = config.get("nemapi_bridge", {})
-            config_text += f"Host: {nb_config.get('host', 'N/A')}\n"
-            config_text += f"Port: {nb_config.get('port', 'N/A')}\n"
+        provider_config = config.get("nemapi", {})
+        config_text += f"Modele: {provider_config.get('model') or 'Non selectionne'}\n"
+        config_text += f"Endpoint: {provider_config.get('host', '127.0.0.1')}:{provider_config.get('port', 8080)}\n"
         
         config_text += f"\nWorkspace: {config.get('security', {}).get('workspace', self.workspace)}"
         
@@ -573,7 +517,7 @@ class NemesisTelegramBot:
         
         about_text = (
             "[INFO] *A propos de NEMESIS Telegram Bot*\n\n"
-            "NEMESIS CLI v3.0 - Agent IA autonome\n\n"
+            "NEMESIS-CLI - Agent IA autonome\n\n"
             "*Fonctionnalites :*\n"
             "- Execution de commandes systeme\n"
             "- Lecture/Ecriture de fichiers\n"
@@ -662,13 +606,15 @@ class NemesisTelegramBot:
                     host = parts[0].strip()
                     try:
                         port = int(parts[1].strip())
-                        config["nemapi_bridge"] = {"host": host, "port": port}
-                        config["provider"]["type"] = "nemapi_bridge"
+                        config["nemapi"]["host"] = host
+                        config["nemapi"]["port"] = port
+                        config["provider"] = {"type": "nemapi"}
                         self._save_chat_config(chat_id, config)
+                        self.providers.pop(chat_id, None)
                         
                         await context.bot.send_message(
                             chat_id=chat_id,
-                            text=f"[OK] NEMAPI Bridge configure: {host}:{port}"
+                            text=f"[OK] NEMAPI configure: {host}:{port}\nUtilisez /model pour choisir un modèle."
                         )
                         self.chat_states.pop(chat_id, None)
                         return
@@ -685,106 +631,13 @@ class NemesisTelegramBot:
                     )
                     return
             
-            elif state == AWAITING_WHISPERER_CONFIG:
-                if "," in message_text:
-                    parts = message_text.split(",", 1)
-                    endpoint = parts[0].strip()
-                    token = parts[1].strip()
-                    config["provider"]["endpoint"] = endpoint
-                    config["provider"]["api_key"] = token
-                    config["provider"]["type"] = "whisperer"
-                    self._save_chat_config(chat_id, config)
-                    
-                    await context.bot.send_message(
-                        chat_id=chat_id,
-                        text="[OK] Whisperer configure"
-                    )
-                    self.chat_states.pop(chat_id, None)
-                    return
-                else:
-                    await context.bot.send_message(
-                        chat_id=chat_id,
-                        text="[ERROR] Format invalide. Utilisez: endpoint,token"
-                    )
-                    return
-            
             elif state == AWAITING_PROVIDER_CONFIG:
-                # Pour Fireworks, Groq, OpenRouter, etc. - on attend la cle API
-                provider_type = config.get("provider", {}).get("type", "bridge")
-                if provider_type not in ["bridge", "nemapi_bridge", "whisperer"]:
-                    # Sauvegarder la cle API
-                    config["provider"]["api_key"] = message_text.strip()
-                    self._save_chat_config(chat_id, config)
-                    
-                    # TOUJOURS lister les modeles pour forcer la selection - pas de modele par defaut automatique
-                    try:
-                        provider = self._get_provider(chat_id)
-                        if provider:
-                            models = provider.list_models()
-                            if models and len(models) > 0:
-                                # Filtrer les doublons
-                                seen = set()
-                                unique = []
-                                for m in models:
-                                    mid = m.get("id", "")
-                                    if mid and mid not in seen:
-                                        seen.add(mid)
-                                        unique.append(m)
-                                
-                                models_to_show = unique[:15]
-                                
-                                if models_to_show:
-                                    keyboard = []
-                                    for model in models_to_show:
-                                        model_id = model.get("id", "")
-                                        owned_by = model.get("owned_by", "")
-                                        display_name = model_id
-                                        if owned_by and owned_by != "unknown":
-                                            display_name = f"{model_id} ({owned_by})"
-                                        if model_id:
-                                            keyboard.append([InlineKeyboardButton(display_name, callback_data=f"model_{model_id}")])
-                                    
-                                    keyboard.append([InlineKeyboardButton("Annuler", callback_data="cancel")])
-                                    reply_markup = InlineKeyboardMarkup(keyboard)
-                                    
-                                    await context.bot.send_message(
-                                        chat_id=chat_id,
-                                        text=f"[OK] Cle API registre pour {PROVIDER_LABELS.get(provider_type, provider_type)}\n\n"
-                                             f"*[SELECT] Selectionnez un modele ({len(models)} disponibles) :*",
-                                        reply_markup=reply_markup,
-                                    )
-                                    self.chat_states[chat_id] = AWAITING_MODEL_SELECTION
-                                    return
-                                else:
-                                    await context.bot.send_message(
-                                        chat_id=chat_id,
-                                        text=f"[ERROR] Aucuns modeles trouves. Verifiez votre cle API."
-                                    )
-                                    self.chat_states.pop(chat_id, None)
-                                    return
-                            else:
-                                await context.bot.send_message(
-                                    chat_id=chat_id,
-                                    text=f"[ERROR] Impossible de recuperer les modeles. Verifiez votre cle API."
-                                )
-                                self.chat_states.pop(chat_id, None)
-                                return
-                        else:
-                            await context.bot.send_message(
-                                chat_id=chat_id,
-                                text=f"[WARN] Erreur de creation du provider. Verifiez votre cle API avec /config"
-                            )
-                            self.chat_states.pop(chat_id, None)
-                            return
-                    except Exception as e:
-                        logger.error(f"Erreur list_models pour {provider_type}: {e}")
-                        await context.bot.send_message(
-                            chat_id=chat_id,
-                            text=f"[ERROR] Erreur lors de la recuperation des modeles. Verifiez votre cle API.\n"
-                                 f"Erreur: {str(e)[:150]}"
-                        )
-                        self.chat_states.pop(chat_id, None)
-                        return
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text="[ERROR] NEMAPI n'utilise pas de clé API ici. Utilisez host:port."
+                )
+                self.chat_states.pop(chat_id, None)
+                return
         
         # Verifier si c'est une commande directe
         if message_text.startswith('/'):
@@ -1100,8 +953,8 @@ class NemesisTelegramBot:
                                   message: str, chat_id: int):
         """Traite une requete pour l'IA - version simplifiée sans autorisations."""
         config = self._get_chat_config(chat_id)
-        provider_type = config.get("provider", {}).get("type", "bridge")
-        model = config.get("provider", {}).get("model", "")
+        provider_type = "nemapi"
+        model = config.get("nemapi", {}).get("model", "")
         
         provider = self._get_provider(chat_id)
         if not provider:
@@ -1109,8 +962,7 @@ class NemesisTelegramBot:
             return
         
         # Envoyer le prompt système si nécessaire
-        if (not self.prompt_system_sent.get(chat_id, False) and 
-            provider_type not in SERVER_MANAGED_PROVIDERS):
+        if not self.prompt_system_sent.get(chat_id, False):
             await self._send_system_prompt(chat_id)
         
         # Afficher un message de statut
@@ -1179,7 +1031,7 @@ class NemesisTelegramBot:
                     act_type = action_item.get('type', '')
                     act_content = action_item.get('content', {})
                     risk = self.executor.risk_for(act_type, act_content) if hasattr(self.executor, "risk_for") else "medium"
-                    authorized = getattr(self, "_session_authorized_tools", set())
+                    authorized = self._session_authorized_tools.get(chat_id, set())
                     if risk == "high" and act_type not in authorized:
                         await self._ask_for_confirmation(update, context, act_type, act_content)
                         await self._cleanup_thinking_message(context, chat_id, status_msg)
@@ -1249,7 +1101,7 @@ class NemesisTelegramBot:
             # Envoyer le prompt à l'IA via le provider, pas à l'utilisateur!
             # Certains providers (nemapi_bridge) supportent role=, d'autres non
             try:
-                result = provider.send_message(prompt, role="user")
+                result = provider.send_message(prompt, role="system")
             except TypeError:
                 # Provider ne supporte pas role=, envoyer sans
                 result = provider.send_message(prompt)
@@ -1406,40 +1258,27 @@ class NemesisTelegramBot:
         
         elif data.startswith("provider_"):
             provider_type = data[9:]
+            if provider_type != "nemapi":
+                await query.edit_message_text("[ERROR] NEMAPI est le seul provider disponible.")
+                return
             config["provider"]["type"] = provider_type
+            config.setdefault("nemapi", {})
             self._save_chat_config(chat_id, config)
             
-            if provider_type == "bridge":
-                await query.edit_message_text(
-                    "🌉 Configuration Bridge\n\n"
-                    "Envoyez: `host:port` (ex: 192.168.1.67:8080)"
-                )
-                self.chat_states[chat_id] = AWAITING_BRIDGE_HOST
-            elif provider_type == "nemapi_bridge":
-                await query.edit_message_text(
-                    "🌉 Configuration NEMAPI Bridge\n\n"
-                    "Envoyez: `host:port` (ex: 127.0.0.1:8080)"
-                )
-                self.chat_states[chat_id] = AWAITING_NEMAPI_HOST
-            elif provider_type == "whisperer":
-                await query.edit_message_text(
-                    "🌉 Configuration Whisperer\n\n"
-                    "Envoyez: `endpoint,token` (ex: http://localhost:9777/v1,sk-xxx)"
-                )
-                self.chat_states[chat_id] = AWAITING_WHISPERER_CONFIG
-            else:
-                # Fireworks, Groq, OpenRouter, etc.
-                await query.edit_message_text(
-                    f"🔑 Configuration de {PROVIDER_LABELS.get(provider_type, provider_type)}\n\n"
-                    "Envoyez votre cle API.\n\n"
-                    "💡 Vous devrez selectionner un modele dans la liste apres validation de la cle."
-                )
-                self.chat_states[chat_id] = AWAITING_PROVIDER_CONFIG
+            await query.edit_message_text(
+                "Configuration NEMAPI\n\n"
+                "Envoyez l'endpoint sous la forme host:port "
+                "(exemple : 127.0.0.1:8080)."
+            )
+            self.chat_states[chat_id] = AWAITING_NEMAPI_HOST
         
         elif data.startswith("model_"):
             model_id = data[6:]
-            config["provider"]["model"] = model_id
+            config.setdefault("nemapi", {})["model"] = model_id
             self._save_chat_config(chat_id, config)
+            provider = self.providers.get(chat_id)
+            if provider is not None:
+                provider.model = model_id
             
             await query.edit_message_text(f"[OK] Modele selectionne: {model_id}")
             await context.bot.send_message(
@@ -1509,9 +1348,7 @@ class NemesisTelegramBot:
                 result = await self._execute_tool(tool_name, params, chat_id, context)
                 
                 # Marquer l'outil comme autorisé pour la session
-                if not hasattr(self, '_session_authorized_tools'):
-                    self._session_authorized_tools = set()
-                self._session_authorized_tools.add(tool_name)
+                self._session_authorized_tools.setdefault(chat_id, set()).add(tool_name)
                 
                 if result and result.get('success'):
                     await query.edit_message_text(f"[OK] Outil '{tool_name}' autorisé pour la session et exécuté avec succès")
@@ -1558,8 +1395,8 @@ class NemesisTelegramBot:
                         if display_text and not display_text.startswith("FEEDBACK:"):
                             # Envoyer la réponse
                             config = self._get_chat_config(chat_id_from_data)
-                            provider_type = config.get("provider", {}).get("type", "bridge")
-                            model = config.get("provider", {}).get("model", "")
+                            provider_type = "nemapi"
+                            model = config.get("nemapi", {}).get("model", "")
                             formatted_response = self._format_ai_response([display_text], provider_type, model)
                             await context.bot.send_message(chat_id=chat_id_from_data, text=formatted_response)
                 
@@ -1614,7 +1451,7 @@ class NemesisTelegramBot:
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
         self.app.add_handler(CallbackQueryHandler(self.button_handler))
 
-        logger.info("Demarrage du bot Telegram NEMESIS v3.0...")
+        logger.info("Demarrage du bot Telegram NEMESIS-CLI...")
         self.app.run_polling(allowed_updates=Update.ALL_TYPES)
 
     def stop(self):
@@ -1648,7 +1485,7 @@ def main():
         print("   Definissez TELEGRAM_BOT_TOKEN ou creez telegram_config.yaml")
         sys.exit(1)
     
-    bot = NemesisTelegramBot(token=token, workspace=workspace)
+    bot = NemesisTelegramBot(token=token, workspace=workspace, default_config=config)
     
     try:
         bot.run()

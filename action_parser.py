@@ -2,7 +2,8 @@
 """
 Ultra-robust JSON-only tool call parser for NEMESIS CLI.
 
-Only the JSON format is supported. The parser is designed to extract and
+JSON is the preferred format, but the parser also accepts common XML-like
+tool-call dialects emitted by local and hosted models. It is designed to extract and
 repair tool calls from LLM responses even when they contain:
   - Large multi-line content (code, file bodies, etc.)
   - Unescaped newlines, tabs, backslashes, quotes inside string values
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import json
 import re
+import ast
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 
@@ -122,31 +124,166 @@ class ActionParser:
                     result["action"] = actions[0]
                     return result
 
-        # 1. Prefer fenced ```json ... ``` blocks
+        # 1. Accept XML-like tool calls emitted by several chat templates.
+        xml_actions, xml_blocks = self._extract_xml_tool_calls(raw_response)
+        if xml_actions:
+            text = raw_response
+            for block in xml_blocks:
+                text = self._remove_matched_fence(text, block)
+            result["text"] = self._strip_tool_markup(text)
+            result["actions"] = xml_actions
+            result["action"] = xml_actions[0]
+            return result
+
+        # Some providers return native tool calls alongside empty XML markers.
+        # Strip those markers even when no valid XML action was extracted; never
+        # show the model's wire protocol as assistant text.
+        if self._contains_tool_markup(raw_response):
+            result["text"] = self._strip_tool_markup(raw_response)
+
+        # 2. Prefer fenced ```json ... ``` blocks
         actions, consumed = self._extract_actions_from_fences(raw_response)
         if actions:
             text = raw_response
             for fence in consumed:
                 text = self._remove_matched_fence(text, fence)
-            result["text"] = text
-            result["actions"] = actions
+            result["text"] = self._clean_text(text)
+            result["actions"] = self._deduplicate(actions)
             result["action"] = actions[0]
             return result
 
-        # 2. Any balanced JSON objects that look like tool calls. Multiple
+        # 3. Any balanced JSON objects that look like tool calls. Multiple
         # sibling calls are preserved in source order.
         extracted = self._extract_tool_json_objects(raw_response)
         if extracted:
             text = raw_response
             for _, span in reversed(extracted):
                 text = text[: span[0]] + text[span[1] :]
-            actions = [action for action, _ in extracted]
+            actions = self._deduplicate([action for action, _ in extracted])
+            result["text"] = self._clean_text(text)
+            result["actions"] = actions
+            result["action"] = actions[0]
+            return result
+
+        # Inline JSON is often truncated by providers when the generated file
+        # body is large. Recover the largest valid tool object even when its
+        # closing braces are missing.
+        action, span = self._extract_largest_tool_json(raw_response)
+        if action:
+            text = raw_response[: span[0]] + raw_response[span[1] :]
             result["text"] = text.strip()
+            result["actions"] = [action]
+            result["action"] = action
+            return result
+
+        # Last format: tool-call syntax emitted as ``name(key=value, ...)``.
+        actions, spans = self._extract_function_calls(raw_response)
+        if actions:
+            text = raw_response
+            for start, end in reversed(spans):
+                text = text[:start] + text[end:]
+            actions = self._deduplicate(actions)
+            result["text"] = self._clean_text(text)
             result["actions"] = actions
             result["action"] = actions[0]
             return result
 
         return result
+
+    def _clean_text(self, text: str) -> str:
+        """Remove all known wire-format residue while preserving user prose."""
+        text = self._strip_tool_markup(text)
+        text = re.sub(r"```(?:json|tool|xml)?\s*```", "", text, flags=re.I)
+        text = re.sub(r"[ \t]+\n", "\n", text)
+        return text.strip()
+
+    @staticmethod
+    def _deduplicate(actions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        unique: List[Dict[str, Any]] = []
+        seen: Set[str] = set()
+        for action in actions:
+            key = json.dumps(action, ensure_ascii=False, sort_keys=True, default=str)
+            if key not in seen:
+                seen.add(key)
+                unique.append(action)
+        return unique
+
+    def _strip_tool_markup(self, text: str) -> str:
+        """Remove orphan XML tool tags left by truncated model responses."""
+        # Remove empty/incomplete tool-call containers first. This also handles
+        # repeated empty blocks emitted before native ``tool_calls``.
+        text = re.sub(r"<tool_call\b[^>]*>.*?</tool_call\s*>", "", text, flags=re.I | re.S)
+        text = re.sub(r"<tool_call\b[^>]*>.*$", "", text, flags=re.I | re.S)
+        text = re.sub(
+            r"</?(?:tool_call|function|parameter)(?:\s*=\s*[^>]+)?\s*>",
+            "",
+            text,
+            flags=re.I,
+        )
+        return text.strip()
+
+    @staticmethod
+    def _contains_tool_markup(text: str) -> bool:
+        return bool(re.search(r"</?(?:tool_call|function|parameter)\b", text, flags=re.I))
+
+    def _extract_xml_tool_calls(self, text: str) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """Parse permissive ``<tool_call>`` blocks used by Qwen-style templates.
+
+        Accepted examples include ``<function=bash>`` and
+        ``<parameter=command>value</parameter>``. Parameters may contain
+        newlines, shell operators, JSON, or arbitrary code.
+        """
+        actions: List[Dict[str, Any]] = []
+        blocks: List[str] = []
+        block_pattern = re.compile(
+            r"<tool_call\b[^>]*>(.*?)(?:</tool_call\s*>|$)", re.I | re.S
+        )
+        function_pattern = re.compile(
+            r"<function\s*=\s*['\"]?([^>\s'\"]+)['\"]?\s*>|"
+            r"<function\s+name\s*=\s*['\"]([^'\"]+)['\"][^>]*>|"
+            r"<function\s*>(.*?)</function\s*>",
+            re.I | re.S,
+        )
+        parameter_pattern = re.compile(
+            r"<parameter\s*=\s*['\"]?([^>\s'\"]+)['\"]?\s*>(.*?)"
+            r"</parameter\s*>(?=\s*<parameter\s*=|</tool_call\s*>|$)",
+            re.I | re.S,
+        )
+
+        for block_match in block_pattern.finditer(text):
+            block = block_match.group(0)
+            body = block_match.group(1)
+            function_match = function_pattern.search(body)
+            if not function_match:
+                # Some templates put JSON directly inside <tool_call>.
+                action, _ = self._extract_largest_tool_json(body)
+                if action:
+                    actions.append(action)
+                    blocks.append(block)
+                continue
+            name = (
+                function_match.group(1)
+                or function_match.group(2)
+                or function_match.group(3)
+                or ""
+            ).strip()
+            params: Dict[str, Any] = {}
+            for parameter_match in parameter_pattern.finditer(body):
+                key = parameter_match.group(1).strip()
+                value = parameter_match.group(2).strip()
+                params[key] = value
+            if not params:
+                # Accept <parameter name="x"> and JSON-like attributes.
+                for match in re.finditer(
+                    r"<parameter\b[^>]*\bname\s*=\s*['\"]([^'\"]+)['\"][^>]*>(.*?)</parameter\s*>",
+                    body, flags=re.I | re.S,
+                ):
+                    params[match.group(1)] = match.group(2).strip()
+            action = self._validate_tool_obj({"tool": name, "parameters": params})
+            if action:
+                actions.append(action)
+                blocks.append(block)
+        return actions, blocks
 
     # ------------------------------------------------------------------
     # Fence extraction
@@ -188,11 +325,26 @@ class ActionParser:
                         actions.extend(parsed_actions)
                         fences.append(match.group(0))
                         continue
+                repaired = self._parse_json_array(candidate)
+                if repaired:
+                    actions.extend(repaired)
+                    fences.append(match.group(0))
+                    continue
             action = self._parse_json_candidate(candidate) if candidate.startswith("{") else None
             if action:
                 actions.append(action)
                 fences.append(match.group(0))
         return actions, fences
+
+    def _parse_json_array(self, raw: str) -> List[Dict[str, Any]]:
+        candidate = self._repair_truncated(self._repair_newlines_in_strings(raw.strip()))
+        try:
+            value = json.loads(candidate)
+        except (json.JSONDecodeError, ValueError):
+            return []
+        if not isinstance(value, list):
+            return []
+        return [action for item in value if (action := self._validate_tool_obj(item))]
 
     def _remove_matched_fence(self, full: str, fence: str) -> str:
         if not fence:
@@ -236,23 +388,58 @@ class ActionParser:
         """Extract non-overlapping sibling tool objects in source order."""
         candidates: List[Tuple[Dict[str, Any], Tuple[int, int]]] = []
         for start, ch in enumerate(text):
-            if ch != "{":
+            if ch not in "{[":
                 continue
-            end = self._find_matching_brace(text, start)
+            end = self._find_matching_delimiter(text, start)
             if end < 0:
                 continue
-            action = self._parse_json_candidate(text[start:end])
+            candidate = text[start:end]
+            action = self._parse_json_candidate(candidate)
             if action:
                 candidates.append((action, (start, end)))
+            elif ch == "[":
+                for item in self._parse_json_array(candidate):
+                    candidates.append((item, (start, end)))
 
         # Keep outer candidates and discard nested parameter objects.
         selected: List[Tuple[Dict[str, Any], Tuple[int, int]]] = []
         for candidate in sorted(candidates, key=lambda item: (item[1][0], -(item[1][1] - item[1][0]))):
             start, end = candidate[1]
-            if any(other[1][0] <= start and end <= other[1][1] for other in selected):
+            if any(
+                other[1] != candidate[1] and other[1][0] <= start and end <= other[1][1]
+                for other in selected
+            ):
                 continue
             selected.append(candidate)
         return sorted(selected, key=lambda item: item[1][0])
+
+    def _extract_function_calls(self, text: str) -> Tuple[List[Dict[str, Any]], List[Tuple[int, int]]]:
+        """Parse safe ``tool_name(key=value)`` calls without executing code."""
+        actions: List[Dict[str, Any]] = []
+        spans: List[Tuple[int, int]] = []
+        pattern = re.compile(
+            r"\b(" + "|".join(map(re.escape, sorted(self.VALID_TOOLS, key=len, reverse=True))) + r")\s*\(",
+            re.I,
+        )
+        for match in pattern.finditer(text):
+            end = self._find_matching_delimiter(text, match.end() - 1, "(", ")")
+            if end < 0:
+                continue
+            args_text = text[match.end():end - 1].strip()
+            params: Dict[str, Any] = {}
+            try:
+                tree = ast.parse(f"f({args_text})", mode="eval").body
+                for keyword in tree.keywords:
+                    if keyword.arg is None:
+                        continue
+                    params[keyword.arg] = ast.literal_eval(keyword.value)
+            except (SyntaxError, ValueError, TypeError, MemoryError):
+                continue
+            action = self._validate_tool_obj({"tool": match.group(1), "parameters": params})
+            if action:
+                actions.append(action)
+                spans.append((match.start(), end))
+        return actions, spans
 
     def _find_matching_brace(self, s: str, start: int) -> int:
         """Return index past the matching '}' or -1 if not found / unbalanced."""
@@ -284,6 +471,40 @@ class ActionParser:
                 if depth == 0:
                     return i + 1
             i += 1
+        return -1
+
+    def _find_matching_delimiter(
+        self, s: str, start: int, opening: Optional[str] = None, closing: Optional[str] = None
+    ) -> int:
+        """Find a balanced JSON/Python delimiter while respecting quoted strings."""
+        if opening is None:
+            opening = s[start]
+            closing = "}" if opening == "{" else "]"
+        assert closing is not None
+        pairs = {"{": "}", "[": "]", "(": ")"}
+        stack: List[str] = []
+        quote: Optional[str] = None
+        escape = False
+        for index in range(start, len(s)):
+            char = s[index]
+            if quote:
+                if escape:
+                    escape = False
+                elif char == "\\":
+                    escape = True
+                elif char == quote:
+                    quote = None
+                continue
+            if char in "\"'":
+                quote = char
+            elif char in pairs:
+                stack.append(pairs[char])
+            elif stack and char == stack[-1]:
+                stack.pop()
+                if not stack:
+                    return index + 1
+            elif stack and char in "}]":
+                return -1
         return -1
 
     # ------------------------------------------------------------------
@@ -501,6 +722,8 @@ class ActionParser:
             obj.get("tool")
             or obj.get("name")
             or obj.get("action")
+            or obj.get("tool_name")
+            or obj.get("function")
             or ""
         )
         if not tool_name or not isinstance(tool_name, str):
@@ -514,8 +737,16 @@ class ActionParser:
             obj.get("parameters")
             or obj.get("arguments")
             or obj.get("params")
+            or obj.get("input")
+            or obj.get("kwargs")
             or {}
         )
+        if isinstance(params, str):
+            try:
+                decoded = json.loads(params)
+                params = decoded if isinstance(decoded, dict) else {"value": decoded}
+            except (json.JSONDecodeError, TypeError):
+                params = {"value": params}
         if not isinstance(params, dict):
             params = {"value": params}
 

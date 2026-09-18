@@ -60,11 +60,11 @@ class Composer:
     DEFAULT_TITLE = "input"
     AUTH_TITLE = "authorization  [y / n / a]"
 
-    def __init__(self, version: str = "2.1.0"):
+    def __init__(self, version: str | None = None):
         self.console = Console()
         self.chat = ChatUI(self.console)
         self._is_tty = sys.stdin.isatty()
-        self._version = version
+        self._version = version  # compatibility only; never displayed
         if self._is_tty:
             self._init_pt()
 
@@ -187,8 +187,21 @@ class Composer:
     def display_todo(self, items):
         self.chat.todo_panel(items)
 
-    def display_welcome(self, provider: str = "", target: str = ""):
-        self.chat.welcome(self._version, provider, target)
+    def display_welcome(
+        self,
+        provider: str = "",
+        target: str = "",
+        model: str = "",
+        workspace: str = "",
+        connected: bool | None = None,
+    ):
+        self.chat.welcome(
+            provider=provider,
+            target=target,
+            model=model,
+            workspace=workspace,
+            connected=connected,
+        )
 
     def display_auth(self, tool_name: str, params: dict):
         self.console.print(self.chat.auth_prompt(tool_name, params if isinstance(params, dict) else {}))

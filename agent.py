@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import tempfile
 import yaml
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -23,9 +24,8 @@ from action_parser import ActionParser
 
 class NemesisApp:
     def __init__(self, debug: bool = False):
-        self.version = "2.1.0"
         self.console = Console(theme=NEMESIS_THEME)
-        self.composer = Composer(version=self.version)
+        self.composer = Composer()
         self._console = self.console  # alias for direct access
         # User config lives in ~/.config/nemesis-cli (not install dir)
         from src.core.paths import (
@@ -79,7 +79,10 @@ class NemesisApp:
 
         # Valeurs par defaut pour les sections manquantes ou invalides
         if not isinstance(self.config.get("provider"), dict) or not self.config["provider"]:
-            self.config["provider"] = {"type": "nemapi"}
+            self.config["provider"] = {
+                "type": "nemapi",
+                "model": "qwen-chat",
+            }
             needs_save = True
         if self.config["provider"].get("type") in {"bridge", "nemapi_bridge", "nemapi-v3"}:
             self.config["provider"]["type"] = "nemapi"
@@ -98,6 +101,7 @@ class NemesisApp:
         # S'assurer que provider.type existe
         if "type" not in self.config["provider"]:
             self.config["provider"]["type"] = "nemapi"
+            self.config["provider"].setdefault("model", "qwen-chat")
             needs_save = True
 
         # Normalize workspace path and ensure directory exists
@@ -114,7 +118,7 @@ class NemesisApp:
         clean = {
             k: v
             for k, v in (self.config or {}).items()
-            if k in ("provider", "bridge", "security", "nemapi_v3", "nemapi", "openai", "groq", "xai", "openrouter")
+            if k in ("provider", "bridge", "security", "nemapi_v3", "nemapi")
             or (isinstance(v, dict) and "type" in (self.config.get("provider") or {}) and k == "provider")
         }
         # Keep full config but strip known MCP-only keys that may have been merged historically
@@ -153,27 +157,30 @@ class NemesisApp:
         
         # Créer un tableau plus élégant
         table = Table(
-            title="[bold bright_cyan]Commandes Disponibles[/bold bright_cyan]",
-            border_style="bright_cyan",
-            box=box.DOUBLE_EDGE,
+            title="[bold #cba6f7]Commandes disponibles[/bold #cba6f7]",
+            border_style="#45475a",
+            box=box.ROUNDED,
             show_header=True,
-            header_style="bold bright_cyan"
+            header_style="bold #89b4fa",
+            expand=True,
         )
-        table.add_column("[bold yellow]Commande[/bold yellow]", style="bold yellow", width=20)
-        table.add_column("[white]Description[/white]", style="white", width=60)
+        table.add_column("Commande", style="bold #fab387", no_wrap=True, width=22)
+        table.add_column("Usage", style="#a6adc8", no_wrap=True, width=32)
+        table.add_column("Description", style="#cdd6f4")
         
         # Trier les commandes par nom
         sorted_commands = sorted(registry.list_commands(), key=lambda c: c.name)
         
         for cmd in sorted_commands:
-            cmd_name = f"[bold cyan]/{cmd.name}[/bold cyan]"
-            desc = cmd.description or "[dim]Aucune description[/dim]"
-            table.add_row(cmd_name, desc)
+            table.add_row(
+                f"/{cmd.name}",
+                cmd.usage or "—",
+                cmd.description or "Aucune description",
+            )
         
         # Ajouter un pied de tableau
-        table.add_row("", "[dim]Tapez /help pour plus d'informations[/dim]", style="dim")
-        
-        self.console.print(Panel(table, border_style="bright_cyan", padding=(1, 2)))
+        self.console.print(Panel(table, border_style="#45475a", padding=(1, 2)))
+        self.console.print("[dim]Astuce : Tab complète une commande · /help affiche cette liste · /exit quitte[/dim]")
 
     def _handle_interrupt(self):
         now = time.time()
@@ -384,6 +391,31 @@ class NemesisApp:
                         break
 
                 if final_res:
+                    if act_type == "bash":
+                        output = (
+                            final_res.get("output")
+                            or final_res.get("stdout")
+                            or final_res.get("error")
+                            or ""
+                        )
+                        self._output_counter += 1
+                        output_id = self._output_counter
+                        self._hidden_outputs[output_id] = {
+                            "command": str(act_content.get("command", "")),
+                            "output": str(output),
+                            "success": bool(final_res.get("success", False)),
+                        }
+                        fd, output_path = tempfile.mkstemp(
+                            prefix=f"nemesis-bash-{output_id}-",
+                            suffix=".log",
+                            text=True,
+                        )
+                        with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as output_file:
+                            output_file.write(str(output))
+                        self._hidden_outputs[output_id]["output_path"] = output_path
+                        final_res = dict(final_res)
+                        final_res["output_id"] = output_id
+                        final_res["output_path"] = output_path
                     self.composer.display_tool_result(final_res, tool_name=act_type)
                     if act_type == "todo" and final_res.get("items") is not None:
                         self.composer.display_todo(final_res["items"])
@@ -409,14 +441,10 @@ class NemesisApp:
             self.client = create_provider(self.config)
         except Exception as e:
             self.console.print(f"[error]Erreur provider: {e}[/error]")
-            self.console.print("[yellow]Passe a NEMAPI par defaut (temporaire)...[/yellow]")
-            # Fallback en memoire uniquement — ne pas ecraser la config sauvegardee
-            fallback_config = {
-                "provider": {"type": "nemapi"},
-                "nemapi": {"host": "127.0.0.1", "port": 8080},
-                "security": self.config.get("security", {"workspace": "./workspace"}),
-            }
-            self.client = create_provider(fallback_config)
+            self.console.print(
+                "[yellow]Provider indisponible. Vérifiez que NEMAPI est démarré et accessible.[/yellow]"
+            )
+            return
 
         self.executor = create_executor_from_config(self.config, bridge=self.client)
         # Synchroniser le parseur avec les outils de l'executeur
@@ -440,10 +468,23 @@ class NemesisApp:
 
         # Provider info for welcome
         provider_type = self.config['provider']['type']
-        host_info = f"{self.client.host}:{self.client.port} / {self.client.model}"
+        host = getattr(self.client, "host", None)
+        port = getattr(self.client, "port", None)
+        host_info = (
+            f"{host}:{port}"
+            if host and port
+            else getattr(self.client, "base_url", "—")
+        )
+        workspace = self.config.get("security", {}).get("workspace", "")
 
         # Modern welcome screen
-        self.composer.display_welcome(provider=provider_type, target=host_info)
+        self.composer.display_welcome(
+            provider=provider_type.upper(),
+            target=host_info,
+            model=getattr(self.client, "model", ""),
+            workspace=workspace,
+            connected=None,
+        )
 
         # Ne pas tester la connexion au demarrage — le faire au premier message
         self._conn_ok = None
@@ -465,13 +506,18 @@ class NemesisApp:
                         self._show_commands()
                         continue
 
-                    cmd_name = parts[0]
+                    cmd_name = parts[0].lower()
                     cmd_args = parts[1:]
                     cmd = registry.get_command(cmd_name)
                     if cmd:
                         res = cmd.handler(cmd_args)
                         if isinstance(res, str) and res.startswith("PROMPT_INTERNAL:"):
                             self._process_cycle(res.replace("PROMPT_INTERNAL:", "").strip())
+                    else:
+                        self.console.print(
+                            f"[error]Commande inconnue : /{cmd_name}[/error] "
+                            "[dim]Utilisez /help pour voir les commandes disponibles.[/dim]"
+                        )
                 else:
                     self._process_cycle(user_input)
 

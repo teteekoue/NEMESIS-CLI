@@ -22,9 +22,9 @@ def create_provider(config: Dict[str, Any]) -> BaseProvider:
             f"Provider inconnu: '{provider_type}'. Disponibles: {available}"
         )
 
-    if provider_type == "nemapi":
+    if provider_type in PROVIDER_MAP:
         return provider_cls(config)
-    raise ValueError("NEMESIS utilise uniquement le provider 'nemapi'.")
+    raise ValueError(f"Provider non supporte: {provider_type}")
 
 
 def list_providers() -> list:

@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
-"""Provider NEMAPI — API OpenAI-compatible via NEMAPI v3 (proxy Python).
+"""Provider NEMAPI — API avec contexte géré côté serveur.
 
-Le contexte de conversation est géré côté navigateur / proxy NEMAPI v3 :
-on n'envoie que le message courant (comme le bridge Android), pas l'historique.
-
-Ce provider est optimisé pour NEMAPI v3 qui a une architecture simplifiée :
-- 4 modèles standard : deepseek-chat, qwen-chat, claude-chat, gemini-chat
-- Pas de contexte incrémental
-- Auto-configuration des onglets fournisseurs
+NEMAPI reçoit uniquement le message courant et conserve le contexte côté
+serveur. Les modèles sont récupérés dynamiquement via ``GET /v1/models``.
 """
 
 import json
@@ -18,12 +13,12 @@ from providers.base import BaseProvider
 
 
 class NemapiV3Provider(BaseProvider):
-    """Provider pour NEMAPI v3 (proxy Python + extension Firefox).
+    """Provider NEMAPI (anciennement NEMAPI v3).
 
     Endpoint principal : POST /v1/chat/completions (stream=false).
     Config : section nemapi {host, port, model} ou provider {host, port, model}.
     
-    Modèles disponibles : deepseek-chat, qwen-chat, claude-chat, gemini-chat
+    Modèles disponibles : ceux retournés par ``/v1/models``.
     """
 
     DEFAULT_HOST = "127.0.0.1"
@@ -48,7 +43,7 @@ class NemapiV3Provider(BaseProvider):
         )
         self.base_url = f"http://{self.host}:{self.port}"
         
-        # Configuration du modèle - peut être spécifié ou choisi parmi les 4 disponibles
+        # Le modèle configuré sera validé contre /v1/models lorsqu'il est interrogé.
         self.model = (
             nv3_cfg.get("model")
             or self.provider_config.get("model")
@@ -77,9 +72,9 @@ class NemapiV3Provider(BaseProvider):
             return False
 
     def list_models(self) -> List[Dict[str, Any]]:
-        """Liste les 4 modèles standard de NEMAPI v3."""
+        """Liste les modèles exposés par le serveur NEMAPI."""
         try:
-            resp = self.req.get(f"{self.base_url}/models", timeout=10)
+            resp = self.req.get(f"{self.base_url}/v1/models", timeout=10)
             resp.raise_for_status()
             data = resp.json()
             raw_models = data.get("data", data) if isinstance(data, dict) else data

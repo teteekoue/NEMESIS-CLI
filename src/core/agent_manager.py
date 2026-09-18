@@ -1,8 +1,7 @@
 """A2A-compliant Agent Manager for NEMESIS CLI sub-agents.
 
 Manages sub-agent lifecycles using the A2A protocol (Agent-to-Agent).
-Each sub-agent is backed by a configurable LLM provider (OpenAI-compatible,
-Groq, Ollama, xAI, etc.). The main agent delegates tasks on the fly.
+Each sub-agent uses the same NEMAPI server-side context as the main agent.
 """
 
 from __future__ import annotations
@@ -40,9 +39,6 @@ from .a2a_protocol import (
 NEMAPI_V3_DEFAULT_HOST = "127.0.0.1"
 NEMAPI_V3_DEFAULT_PORT = 8080
 NEMAPI_V3_DEFAULT_MODEL = "qwen-chat"
-GROQ_DEFAULT_MODEL = "groq/compound-mini"
-GROQ_BASE_URL = "https://api.groq.com/openai/v1"
-
 # A2A sub-agents: NemAPI v3 only (same as main agent context model)
 PROVIDER_PRESETS: Dict[str, Dict[str, Any]] = {
     "nemapi": {
@@ -151,14 +147,9 @@ class A2AAgentClient:
         else:
             self.host = host or ""
             self.port = int(port or 0)
-            self.base_url = (base_url or preset.get("base_url") or GROQ_BASE_URL).rstrip("/")
-            self.model = model or preset.get("default_model") or GROQ_DEFAULT_MODEL
-            self.api_key = (
-                api_key
-                or os.environ.get("GROQ_API_KEY", "")
-                or os.environ.get("OPENAI_API_KEY", "")
-                or ""
-            )
+            self.base_url = (base_url or preset.get("base_url")).rstrip("/")
+            self.model = model or preset.get("default_model") or NEMAPI_V3_DEFAULT_MODEL
+            self.api_key = api_key or "nemapi"
 
         self._client = None
         self._req = None

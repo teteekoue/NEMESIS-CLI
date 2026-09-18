@@ -137,6 +137,20 @@ def test_bare_json_without_fence():
     assert r["action"]["content"]["command"] == "echo hi"
 
 
+def test_truncated_inline_write_call_is_executed():
+    p = make_parser()
+    raw = (
+        'Je crée le fichier : {"tool":"write_file","parameters":'
+        '{"path":"reseau_machine.md","content":"# Réseau\\n\\n## DNS"}'
+    )
+    r = p.parse(raw)
+    assert r["action"] is not None
+    assert r["action"]["type"] == "write_file"
+    assert r["action"]["content"]["path"] == "reseau_machine.md"
+    assert "## DNS" in r["action"]["content"]["content"]
+    assert r["text"] == "Je crée le fichier :"
+
+
 def test_no_action():
     p = make_parser()
     raw = "Just a normal reply with no tool call."
@@ -212,11 +226,45 @@ command: ls -la
     assert r["action"] is None
 
 
-def test_xml_format_rejected():
+def test_qwen_xml_tool_call_format():
     p = make_parser()
-    raw = '<ACTION type="bash">ls -la</ACTION>'
+    raw = (
+        "Je vérifie.\n"
+        "<tool_call> <function=bash> "
+        "<parameter=command>echo \"=== OS ===\" && uname -a</parameter>"
+        "<parameter=description>Collect OS information</parameter>"
+        "</tool_call>"
+    )
+    r = p.parse(raw)
+    assert r["action"]["type"] == "bash"
+    assert r["action"]["content"]["command"] == 'echo "=== OS ===" && uname -a'
+    assert r["action"]["content"]["description"] == "Collect OS information"
+
+
+def test_multiple_qwen_xml_tool_calls():
+    p = make_parser()
+    raw = (
+        "<tool_call><function=bash><parameter=command>uname -a</parameter></tool_call>"
+        "<tool_call><function=bash><parameter=command>free -h</parameter></tool_call>"
+    )
+    r = p.parse(raw)
+    assert [a["content"]["command"] for a in r["actions"]] == ["uname -a", "free -h"]
+
+
+def test_empty_xml_markers_are_not_displayed():
+    p = make_parser()
+    raw = "Je vérifie.<tool_call>\n\n</tool_call> <tool_call>\n\n</tool_call>"
     r = p.parse(raw)
     assert r["action"] is None
+    assert r["text"] == "Je vérifie."
+
+
+def test_xml_markers_are_removed_when_native_calls_are_added_later():
+    p = make_parser()
+    raw = "Je vérifie.<tool_call>\n</tool_call>"
+    r = p.parse(raw)
+    r["actions"].append({"type": "bash", "content": {"command": "uname -a"}})
+    assert "<tool_call>" not in r["text"]
 
 
 def test_batch_json_calls():
@@ -228,6 +276,39 @@ def test_batch_json_calls():
     r = p.parse(raw)
     assert [item["type"] for item in r["actions"]] == ["read_file", "grep"]
     assert r["action"] == r["actions"][0]
+
+
+def test_embedded_json_array_calls():
+    p = make_parser()
+    raw = 'Je prépare : [{"tool":"read_file","parameters":{"path":"a.py"}}, {"name":"bash","arguments":{"command":"pwd"}}]'
+    r = p.parse(raw)
+    assert [item["type"] for item in r["actions"]] == ["read_file", "bash"]
+    assert r["text"] == "Je prépare :"
+
+
+def test_tool_aliases_and_json_string_arguments():
+    p = make_parser()
+    raw = '{"tool_name":"bash","input":"{\\"command\\":\\"printf hi\\"}"}'
+    r = p.parse(raw)
+    assert r["action"]["type"] == "bash"
+    assert r["action"]["content"]["command"] == "printf hi"
+
+
+def test_xml_attribute_function_and_parameters():
+    p = make_parser()
+    raw = '<tool_call><function name="bash"><parameter name="command">printf ok</parameter></tool_call>'
+    r = p.parse(raw)
+    assert r["action"]["type"] == "bash"
+    assert r["action"]["content"]["command"] == "printf ok"
+
+
+def test_safe_function_call_syntax():
+    p = make_parser()
+    raw = 'Je lance bash(command="echo hi", description="test").'
+    r = p.parse(raw)
+    assert r["action"]["type"] == "bash"
+    assert r["action"]["content"]["command"] == "echo hi"
+    assert r["text"] == "Je lance ."
 
 
 if __name__ == "__main__":

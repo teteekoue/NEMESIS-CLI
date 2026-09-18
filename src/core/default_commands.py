@@ -49,6 +49,18 @@ PROVIDER_LABELS = {
 @registry.register("help", "Affiche la liste des commandes disponibles")
 def help_command(args=None):
     if _active_app:
+        if args:
+            command = registry.get_command(str(args[0]).lower())
+            if command:
+                usage = command.usage or f"/{command.name}"
+                console.print(Panel(
+                    f"[bold cyan]{usage}[/bold cyan]\n\n{command.description}",
+                    title="Aide",
+                    border_style="bright_cyan",
+                ))
+                return
+            console.print(f"[error]Commande inconnue : /{args[0]}[/error]")
+            return
         _active_app._show_commands()
 
 
@@ -56,8 +68,17 @@ def help_command(args=None):
 def clear_command(args=None):
     console.clear()
     from src.ui.header import get_header
-    ver = _active_app.version if _active_app else "2.1.0"
-    console.print(get_header(ver))
+    if _active_app:
+        client = _active_app.client
+        console.print(get_header(
+            provider=_active_app.config.get("provider", {}).get("type", "nemapi").upper(),
+            target=f"{getattr(client, 'host', '')}:{getattr(client, 'port', '')}",
+            model=getattr(client, "model", ""),
+            workspace=_active_app.config.get("security", {}).get("workspace", ""),
+            connected=_active_app._conn_ok,
+        ))
+    else:
+        console.print(get_header())
 
 
 @registry.register("show", "Affiche une sortie de commande cachée (ID ou 'last' ou 'all')")
@@ -206,7 +227,7 @@ def _print_session_time():
         console.print(f"[system]Duree de session : {mins:02d}:{secs:02d}[/system]")
 
 
-@registry.register("stats", "Affiche les statistiques de la session actuelle")
+@registry.register("stats", "Affiche les statistiques de la session actuelle", "/stats")
 def stats_command(args=None):
     uptime = datetime.now() - SESSION_START
     conv_count = _active_app.client.conversation_count() if _active_app and _active_app.client else 0
@@ -256,16 +277,47 @@ def config_command(args=None):
     console.print(table)
 
 
-@registry.register("about", "Informations sur Nemesis CLI")
+@registry.register("about", "Informations sur NEMESIS-CLI")
 def about_command(args=None):
     text = Text.assemble(
         ("NEMESIS CLI\n", "bold bright_cyan"),
         ("L'agent autonome de codage et d'administration Linux.\n\n", "italic white"),
-        ("Version : ", "dim"), ("2.1.0\n", "bold white"),
-        ("Auteur : ", "dim"), ("Nemesis Team\n", "white"),
-        ("\nProvider: NEMAPI — modèles via /v1/models", "grey50"),
+        ("Provider : ", "dim"), ("NEMAPI\n", "bold white"),
+        ("Modèles : ", "dim"), ("récupérés via /v1/models\n", "white"),
+        ("Interface : ", "dim"), ("outils batch, Todo, subagents A2A", "white"),
     )
     console.print(Panel(text, border_style="bright_blue", expand=False))
+
+
+@registry.register("status", "Affiche l'etat de la session, du modele et du workspace", "/status")
+def status_command(args=None):
+    if not _active_app:
+        console.print("[error]Application non initialisee.[/error]")
+        return
+    client = _active_app.client
+    table = Table(title="Etat de la session", border_style="bright_blue")
+    table.add_column("Parametre", style="cyan")
+    table.add_column("Valeur", style="white")
+    table.add_row("Connexion", "connectee" if _active_app._conn_ok is True else "non testee" if _active_app._conn_ok is None else "hors ligne")
+    table.add_row("Provider", _active_app.config.get("provider", {}).get("type", "nemapi").upper())
+    table.add_row("Modele", str(getattr(client, "model", "non selectionne")))
+    table.add_row("Endpoint", f"{getattr(client, 'host', '—')}:{getattr(client, 'port', '—')}")
+    table.add_row("Workspace", _active_app.config.get("security", {}).get("workspace", "—"))
+    table.add_row("Messages", str(MESSAGE_COUNT))
+    console.print(table)
+
+
+@registry.register("todo", "Affiche le plan de travail courant", "/todo")
+def todo_command(args=None):
+    if not _active_app:
+        console.print("[error]Application non initialisee.[/error]")
+        return
+    workspace = _active_app.config.get("security", {}).get("workspace")
+    try:
+        from src.core.tools.todo import _load
+        _active_app.composer.display_todo(_load(workspace) if workspace else [])
+    except (OSError, TypeError) as exc:
+        console.print(f"[error]Impossible de charger le plan : {exc}[/error]")
 
 
 @registry.register("tools", "Liste les outils systeme disponibles pour l'agent")
