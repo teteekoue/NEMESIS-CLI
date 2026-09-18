@@ -553,7 +553,17 @@ def build_system_prompt(registry: ToolRegistry) -> str:
 
     tools_lines = []
     for name, reg in registry:
-        tools_lines.append(f"- **{name}**: {reg.definition.description[:120].split(chr(10))[0]}")
+        schema = reg.definition.params_schema or {}
+        props = schema.get("properties", {})
+        required = set(schema.get("required", []))
+        params = ", ".join(
+            f"{key}{'' if key in required else '?'}" for key in props
+        )
+        risk = getattr(reg, "risk", "medium")
+        suffix = f" — params: {params}" if params else ""
+        tools_lines.append(
+            f"- **{name}** [{risk}]: {reg.definition.description[:180].split(chr(10))[0]}{suffix}"
+        )
 
     tool_count = len(tools_lines)
     prompt += f"\n\n## Available Tools ({tool_count} total)\n\n" + "\n".join(tools_lines)
@@ -1091,4 +1101,3 @@ def _skills_list() -> dict:
         return {"success": True, "stdout": "\n".join(lines)}
     except Exception as e:
         return {"success": False, "stdout": f"skills_list error: {e}"}
-

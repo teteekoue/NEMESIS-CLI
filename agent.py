@@ -79,10 +79,14 @@ class NemesisApp:
 
         # Valeurs par defaut pour les sections manquantes ou invalides
         if not isinstance(self.config.get("provider"), dict) or not self.config["provider"]:
-            self.config["provider"] = {"type": "bridge"}
+            self.config["provider"] = {"type": "nemapi"}
             needs_save = True
-        if not isinstance(self.config.get("bridge"), dict):
-            self.config["bridge"] = {"host": "192.168.1.67", "port": 8080}
+        if self.config["provider"].get("type") in {"bridge", "nemapi_bridge", "nemapi-v3"}:
+            self.config["provider"]["type"] = "nemapi"
+            needs_save = True
+        if not isinstance(self.config.get("nemapi"), dict):
+            legacy = self.config.get("nemapi_v3", {})
+            self.config["nemapi"] = legacy if isinstance(legacy, dict) else {"host": "127.0.0.1", "port": 8080}
             needs_save = True
         if not isinstance(self.config.get("security"), dict):
             self.config["security"] = {"workspace": str(DEFAULT_WORKSPACE)}
@@ -93,7 +97,7 @@ class NemesisApp:
 
         # S'assurer que provider.type existe
         if "type" not in self.config["provider"]:
-            self.config["provider"]["type"] = "bridge"
+            self.config["provider"]["type"] = "nemapi"
             needs_save = True
 
         # Normalize workspace path and ensure directory exists
@@ -191,8 +195,10 @@ class NemesisApp:
         """
         return self.parser.parse(resp)
 
-    def _ask_for_authorization(self, tool_name: str, action_content: Dict) -> bool:
+    def _ask_for_authorization(self, tool_name: str, action_content: Dict, risk: str = "medium") -> bool:
         """Ask the user to authorize a tool call. Returns True if allowed."""
+        if risk == "read":
+            return True
         if tool_name in self._authorized_tools:
             return True
 
@@ -254,17 +260,13 @@ class NemesisApp:
 
         # Envoi du prompt systeme au premier message (une seule fois par session)
         if not self._prompt_sent:
-            self._prompt_sent = True
-            from src.core.paths import prompt_system_path
-            p_path = prompt_system_path()
-            if p_path.exists():
-                # Toujours demander l'autorisation avant d'envoyer le prompt système
-                choix = self.console.input("[yellow]Envoyer le prompt systeme ? (y/n) [/yellow]").strip().lower()
-                if choix == "y":
-                    with open(p_path, "r", encoding="utf-8") as f:
-                        self.client.send_message(f.read())
-                else:
-                    self.console.print("[dim]Prompt système non envoyé.[/dim]")
+            prompt = self.executor.get_system_prompt() if hasattr(self.executor, "get_system_prompt") else ""
+            if prompt:
+                try:
+                    init_result = self.client.send_message(prompt, role="system")
+                except TypeError:
+                    init_result = self.client.send_message(prompt)
+                self._prompt_sent = bool(init_result.get("success", True)) if isinstance(init_result, dict) else True
 
         increment_message_count()
 
@@ -274,7 +276,7 @@ class NemesisApp:
         current_input = message
         current_role = "user"
         iteration = 0
-        max_tool_iterations = 999
+        max_tool_iterations = 50
         last_tool_name = None
         last_response_hash = None
         start_time = time.time()
@@ -313,6 +315,20 @@ class NemesisApp:
 
             raw_response = result.get('response', '')
             parsed = self._parse_response(raw_response)
+            native_calls = result.get("tool_calls") or []
+            for native_call in native_calls:
+                if isinstance(native_call, dict):
+                    parsed.setdefault("actions", []).append({
+                        "type": native_call.get("type", ""),
+                        "content": native_call.get("content", {}),
+                    })
+            native_call = result.get("tool_call")
+            if native_call and isinstance(native_call, dict) and not native_calls:
+                parsed.setdefault("actions", []).append({
+                    "type": native_call.get("type", ""),
+                    "content": native_call.get("content", {}),
+                })
+                parsed["action"] = parsed["actions"][0]
             if self.debug:
                 self.console.print(f"[debug]Reponse recue ({len(raw_response)} chars), action={parsed['action'] is not None}[/debug]")
 
@@ -330,113 +346,50 @@ class NemesisApp:
                 self.composer.display_ai_message(display_text)
 
             # --- No action = end of cycle ---
-            if not parsed['action']:
+            actions = parsed.get("actions") or ([parsed["action"]] if parsed.get("action") else [])
+            if not actions:
                 break
-
-            # --- Boucle outil supprimée ---
-            if not parsed.get('action'):
-                break
-
-            act_type = parsed['action']['type']
-            act_content = parsed['action']['content']
-            last_tool_name = act_type
-
-            # --- DEMANDE D'AUTORISATION AVANT EXECUTION ---
-            if not self._ask_for_authorization(act_type, act_content):
-                # Utilisateur a refusé
-                self.console.print(f"[red] Exécution de l'outil '{act_type}' refusée.[/red]")
-                # Envoyer un feedback de refus à l'IA
-                current_input = f"FEEDBACK:\nTool: {act_type}\nSucces: false\nOutput:\n[EXECUTION REFUSEE PAR L'UTILISATEUR]"
-                current_role = "tool_result"
-                continue
-
-            # --- Tool execution header ---
-            self.composer.display_tool_start(act_type, act_content if isinstance(act_content, dict) else {})
-
-            final_res = {}
-            tool_call_count = 0
-            accumulated_output = []  # Accumuler les lignes pour le feedback IA
-            needs_input_handled = False
-            
-            # --- Execute tool ---
-            for update in self.executor.execute_tool(act_type, act_content):
-                # Vérifier si interruption demandée pendant l'exécution
-                if self._interrupted:
-                    self._interrupted = False
-                    self.console.print("[yellow] Exécution de l'outil interrompue.[/yellow]")
-                    final_res = {"success": False, "stdout": "", "error": "Interrompu par l'utilisateur"}
-                    break
-                    
-                # Pour bash, gérer le besoin d'entrée utilisateur
-                if act_type == "bash" and update.get('needs_input'):
-                    # Stocker le contexte pour plus tard
-                    input_context = update.get('input_context', '')
-                    
-                    # Afficher un message clair pour l'utilisateur
-                    self.console.print()
-                    if input_context and input_context != '[Commande attend une entrée...]':
-                        self.console.print(f"[yellow]  La commande attend une entrée :[/yellow]")
-                        # Afficher le contexte (dernières lignes) pour aider l'utilisateur
-                        context_lines = input_context.strip().split('\n')
-                        for context_line in context_lines[-3:]:  # Afficher les 3 dernières lignes max
-                            if context_line.strip():
-                                self.console.print(f"  [dim]{context_line}[/dim]")
-                    else:
-                        self.console.print("[yellow]  La commande attend une entrée utilisateur[/yellow]")
-                    
-                    try:
-                        user_input = self.composer.prompt_input("[yellow]>>>[/yellow] ")
-                        if user_input:
-                            # Envoyer l'entrée au processus
-                            if hasattr(self.executor, '_waiting_for_input') and self.executor._waiting_for_input:
-                                try:
-                                    import os
-                                    if hasattr(self.executor, '_waiting_for_input_fd'):
-                                        os.write(self.executor._waiting_for_input_fd, (user_input + "\n").encode('utf-8'))
-                                    else:
-                                        # Fallback au stdin standard
-                                        self.executor._waiting_for_input.stdin.write(user_input + "\n")
-                                        self.executor._waiting_for_input.stdin.flush()
-                                    # Accumuler l'entrée pour le feedback
-                                    accumulated_output.append(f"> {user_input}\n")
-                                except Exception as e:
-                                    accumulated_output.append(f"[ERROR] {e}\n")
-                    except EOFError:
-                        accumulated_output.append("[CANCELLED]\n")
-                    
-                    needs_input_handled = True
+            batch_feedback = []
+            for action in actions:
+                act_type = action['type']
+                act_content = action.get('content', {})
+                last_tool_name = act_type
+                risk = self.executor.risk_for(act_type, act_content) if hasattr(self.executor, "risk_for") else "medium"
+                if not self._ask_for_authorization(act_type, act_content, risk):
+                    self.console.print(f"[red] Exécution de l'outil '{act_type}' refusée.[/red]")
+                    batch_feedback.append(f"Tool: {act_type}\nSuccess: false\nOutput:\n[EXECUTION REFUSEE PAR L'UTILISATEUR]")
                     continue
-                
-                # Pour bash, accumuler la sortie dans accumulated_output
-                if act_type == "bash" and 'stdout' in update:
-                    accumulated_output.append(update['stdout'])
-                
-                # Stocker le résultat final
-                if 'success' in update or (act_type != "bash" and update):
-                    final_res = update
-                    # Ajouter les lignes accumulées à stdout
-                    if accumulated_output:
-                        existing_stdout = final_res.get('stdout', '')
-                        final_res['stdout'] = ''.join(accumulated_output) + (existing_stdout if existing_stdout else '')
-                    # S'assurer que le feedback contient toujours la sortie complète
-                    if 'stdout' not in final_res:
-                        final_res['stdout'] = ''.join(accumulated_output) if accumulated_output else ''
-                
-                tool_call_count += 1
-                
-                # Pour les outils non-bash, on peut s'arrêter après le premier résultat
-                # Pour bash, on continue jusqu'à la fin de l'itération
-                if act_type != "bash" and final_res:
-                    break
 
-            # --- Result display ---
-            if final_res:
-                # Afficher directement le résultat pour tous les outils, y compris bash
-                self.composer.display_tool_result(final_res, tool_name=act_type)
-            else:
-                self.console.print(Text("   Done", style="green"))
+                self.composer.display_tool_start(act_type, act_content if isinstance(act_content, dict) else {})
+                final_res = {}
+                for update in self.executor.execute_tool(act_type, act_content):
+                    if self._interrupted:
+                        self._interrupted = False
+                        final_res = {"success": False, "stdout": "", "error": "Interrompu par l'utilisateur"}
+                        break
+                    if update.get("needs_input"):
+                        self.console.print("[yellow]La commande attend une entrée utilisateur.[/yellow]")
+                        try:
+                            user_input = self.composer.prompt_input("[yellow]>>>[/yellow] ")
+                            waiting = getattr(self.executor, "_waiting_for_input", None)
+                            if user_input and waiting and getattr(waiting, "stdin", None):
+                                waiting.stdin.write(user_input + "\n")
+                                waiting.stdin.flush()
+                        except (EOFError, KeyboardInterrupt):
+                            pass
+                        continue
+                    if "success" in update or (act_type != "bash" and update):
+                        final_res = update
+                    if act_type != "bash" and final_res:
+                        break
 
-            current_input = self._format_feedback(parsed['action'], final_res)
+                if final_res:
+                    self.composer.display_tool_result(final_res, tool_name=act_type)
+                    if act_type == "todo" and final_res.get("items") is not None:
+                        self.composer.display_todo(final_res["items"])
+                batch_feedback.append(self._format_feedback(action, final_res))
+
+            current_input = "FEEDBACK:\n" + "\n\n".join(batch_feedback)
             current_role = "tool_result"
             continue
 
@@ -456,11 +409,11 @@ class NemesisApp:
             self.client = create_provider(self.config)
         except Exception as e:
             self.console.print(f"[error]Erreur provider: {e}[/error]")
-            self.console.print("[yellow]Passe au provider bridge par defaut (temporaire)...[/yellow]")
+            self.console.print("[yellow]Passe a NEMAPI par defaut (temporaire)...[/yellow]")
             # Fallback en memoire uniquement — ne pas ecraser la config sauvegardee
             fallback_config = {
-                "provider": {"type": "bridge"},
-                "bridge": {"host": "192.168.1.67", "port": 8080},
+                "provider": {"type": "nemapi"},
+                "nemapi": {"host": "127.0.0.1", "port": 8080},
                 "security": self.config.get("security", {"workspace": "./workspace"}),
             }
             self.client = create_provider(fallback_config)
@@ -487,10 +440,7 @@ class NemesisApp:
 
         # Provider info for welcome
         provider_type = self.config['provider']['type']
-        if provider_type in ("bridge", "nemapi_bridge"):
-            host_info = f"{self.client.host}:{self.client.port}"
-        else:
-            host_info = self.client.model or provider_type
+        host_info = f"{self.client.host}:{self.client.port} / {self.client.model}"
 
         # Modern welcome screen
         self.composer.display_welcome(provider=provider_type, target=host_info)

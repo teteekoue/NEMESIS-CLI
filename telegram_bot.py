@@ -42,6 +42,7 @@ from telegram.ext import (
 from src.core.agent_tools import create_registry
 from providers import create_provider, list_providers
 from tools import ActionExecutor
+from src.core.tool_bridge import ToolBridge
 from tools_schema import get_tool_handler_method, validate_tool_call
 from action_parser import ActionParser
 
@@ -58,21 +59,11 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 PROVIDER_LABELS = {
-    "bridge": "Bridge (Android/Local)",
-    "nemapi_bridge": "NEMAPI Bridge (Firefox/OpenAI)",
-    "groq": "Groq",
-    "nvidia_nim": "Nvidia NIM",
-    "nvidia": "Nvidia NIM",
-    "fireworks": "Fireworks AI",
-    "cohere": "Cohere",
-    "xai": "xAI Grok",
-    "openrouter": "OpenRouter",
-    "ollama": "Ollama local",
-    "whisperer": "Whisperer (llm-whisperer local)",
+    "nemapi": "NEMAPI",
 }
 
 # Providers qui gerent leur contexte cote serveur
-SERVER_MANAGED_PROVIDERS = ["bridge", "nemapi_bridge"]
+SERVER_MANAGED_PROVIDERS = ["nemapi"]
 
 # Etats de conversation
 AWAITING_PROVIDER_CONFIG = 1
@@ -107,9 +98,8 @@ def load_chat_config(chat_id: int) -> Dict[str, Any]:
     
     # Configuration par defaut (identique au CLI)
     default_config = {
-        "provider": {"type": "bridge"},
-        "bridge": {"host": "192.168.1.67", "port": 8080},
-        "nemapi_bridge": {"host": "127.0.0.1", "port": 8080},
+        "provider": {"type": "nemapi"},
+        "nemapi": {"host": "127.0.0.1", "port": 8080},
         "security": {"workspace": "./workspace"},
     }
     
@@ -130,6 +120,10 @@ def load_chat_config(chat_id: int) -> Dict[str, Any]:
                     for subkey, subvalue in default_config[key].items():
                         if subkey not in loaded.get(key, {}):
                             loaded.setdefault(key, {})[subkey] = subvalue
+            if loaded.get("provider", {}).get("type") != "nemapi":
+                loaded["provider"]["type"] = "nemapi"
+                legacy = loaded.get("nemapi_v3") or loaded.get("nemapi_bridge") or loaded.get("bridge") or {}
+                loaded.setdefault("nemapi", legacy)
             return loaded
     except Exception as e:
         logger.error(f"Erreur chargement config pour chat {chat_id}: {e}")
@@ -165,7 +159,7 @@ class NemesisTelegramBot:
         self.bot: Optional[Bot] = None
         self.app: Optional[Application] = None
         self.registry = None
-        self.executor = ActionExecutor(workspace=self.workspace)
+        self.executor = ToolBridge(workspace=self.workspace)
         self.parser = ActionParser()
         
         # Etats de conversation par chat
@@ -186,7 +180,7 @@ class NemesisTelegramBot:
 
     def _init_nemesis(self):
         """Initialise les composants NEMESIS."""
-        self.registry = create_registry(self.workspace)
+        self.registry = self.executor.registry
         logger.info("NEMESIS agent initialized with %d tools", len(self.registry._tools))
 
     def _get_chat_config(self, chat_id: int) -> Dict[str, Any]:
@@ -1020,6 +1014,8 @@ class NemesisTelegramBot:
         self.pending_actions[chat_id] = {
             "tool_name": tool_name,
             "params": params,
+            "action_type": tool_name,
+            "action_content": params,
             "timestamp": time.time()
         }
         
@@ -1070,8 +1066,11 @@ class NemesisTelegramBot:
                 return {"success": False, "error": f"Outil inconnu: {tool_name}"}
 
             parameters = self._normalize_parameters(tool_name, parameters)
-            tool_reg = self.registry._tools[tool_name]
-            result = tool_reg.handler(**parameters)
+            tool_updates = list(self.executor.execute_tool(tool_name, parameters))
+            result = tool_updates[-1] if tool_updates else {
+                "success": False,
+                "error": "L'outil n'a retourné aucun résultat.",
+            }
             
             # Formater le résultat
             formatted = self._format_tool_result(result)
@@ -1171,26 +1170,36 @@ class NemesisTelegramBot:
                     if clean_text:
                         last_ai_text = clean_text
                 
-                # Si pas d'action, on arrête
-                if not action:
+                # Execute every call in the model turn, preserving order.
+                actions = parsed.get("actions") or ([action] if action else [])
+                if not actions:
                     break
-                
-                # Exécuter l'outil sans confirmation (autorisation automatique)
-                act_type = action.get('type', '')
-                act_content = action.get('content', {})
-                
-                tool_result = await self._execute_tool(act_type, act_content, chat_id, context)
-                
-                # Construire le feedback pour l'IA
-                if isinstance(tool_result, dict):
-                    if tool_result.get('success'):
-                        feedback = f"FEEDBACK:\nTool: {act_type}\nSuccess: true\nOutput:\n{tool_result.get('content', tool_result.get('output', 'OK'))}"
+                feedback_parts = []
+                for action_item in actions:
+                    act_type = action_item.get('type', '')
+                    act_content = action_item.get('content', {})
+                    risk = self.executor.risk_for(act_type, act_content) if hasattr(self.executor, "risk_for") else "medium"
+                    authorized = getattr(self, "_session_authorized_tools", set())
+                    if risk == "high" and act_type not in authorized:
+                        await self._ask_for_confirmation(update, context, act_type, act_content)
+                        await self._cleanup_thinking_message(context, chat_id, status_msg)
+                        return
+                    tool_result = await self._execute_tool(act_type, act_content, chat_id, context)
+                    if isinstance(tool_result, dict):
+                        if tool_result.get('success'):
+                            feedback_parts.append(
+                                f"Tool: {act_type}\nSuccess: true\nOutput:\n"
+                                f"{tool_result.get('content', tool_result.get('output', 'OK'))}"
+                            )
+                        else:
+                            feedback_parts.append(
+                                f"Tool: {act_type}\nSuccess: false\nError:\n"
+                                f"{tool_result.get('error', 'Erreur inconnue')}"
+                            )
                     else:
-                        feedback = f"FEEDBACK:\nTool: {act_type}\nSuccess: false\nError:\n{tool_result.get('error', 'Erreur inconnue')}"
-                else:
-                    feedback = f"FEEDBACK:\nTool: {act_type}\nSuccess: true\nOutput:\n{str(tool_result)}"
-                
-                current_input = feedback
+                        feedback_parts.append(f"Tool: {act_type}\nSuccess: true\nOutput:\n{tool_result}")
+
+                current_input = "FEEDBACK:\n" + "\n\n".join(feedback_parts)
                 current_role = "tool_result"
             
             # Supprimer le message de statut
@@ -1222,27 +1231,14 @@ class NemesisTelegramBot:
 
     async def _send_system_prompt(self, chat_id: int) -> bool:
         """Envoye le prompt système à l'IA (pas à l'utilisateur!) pour ce chat."""
-        # Utiliser le même prompt système que le CLI
-        import os
-        prompt_paths = [
-            Path(__file__).resolve().parent / "prompt_system.txt",
-            Path.home() / ".config" / "nemesis-cli" / "prompt_system.txt",
-            Path.cwd() / "prompt_system.txt"
-        ]
-        
-        prompt = None
-        for path in prompt_paths:
-            if path.exists():
-                try:
-                    with open(path, 'r', encoding='utf-8') as f:
-                        prompt = f.read()
-                        break
-                except Exception as e:
-                    logger.error(f"Erreur chargement prompt système depuis {path}: {e}")
-        
-        if not prompt:
-            logger.warning("prompt_system.txt non trouvé, utilisation du prompt par défaut")
-            prompt = "You are NEMESIS, a professional CLI coding agent. Be precise and methodical."
+        # Generate the prompt from the live registry so Telegram and CLI
+        # expose exactly the same tools and rules.
+        try:
+            from src.core.agent_tools import build_system_prompt
+            prompt = build_system_prompt(self.registry)
+        except Exception as e:
+            logger.error(f"Erreur construction prompt système: {e}")
+            prompt = "You are NEMESIS. Use only the tools provided by the runtime."
         
         try:
             provider = self._get_provider(chat_id)

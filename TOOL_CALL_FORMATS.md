@@ -18,6 +18,18 @@ No YAML, XML, or natural-language fallbacks are used.
 }
 ```
 
+Independent calls may be batched in one response:
+
+```json
+[
+  {"tool": "read_file", "parameters": {"path": "src/app.py"}},
+  {"tool": "grep", "parameters": {"pattern": "TODO", "path": "src"}}
+]
+```
+
+Calls are executed in array order. Batch only independent operations; keep
+dependent writes in separate turns so each result can be inspected first.
+
 The block should appear inside a markdown code fence (` ```json ` … ` ``` `). Bare `{…}` objects are also detected when they form a valid tool call.
 
 ### Accepted key aliases

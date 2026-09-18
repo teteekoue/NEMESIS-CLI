@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Provider nemapi-v3 — API OpenAI-compatible via NEMAPI v3 (proxy Python).
+"""Provider NEMAPI — API OpenAI-compatible via NEMAPI v3 (proxy Python).
 
 Le contexte de conversation est géré côté navigateur / proxy NEMAPI v3 :
 on n'envoie que le message courant (comme le bridge Android), pas l'historique.
@@ -21,30 +21,21 @@ class NemapiV3Provider(BaseProvider):
     """Provider pour NEMAPI v3 (proxy Python + extension Firefox).
 
     Endpoint principal : POST /v1/chat/completions (stream=false).
-    Config : section nemapi_v3 {host, port, model} ou provider {host, port, model}.
+    Config : section nemapi {host, port, model} ou provider {host, port, model}.
     
     Modèles disponibles : deepseek-chat, qwen-chat, claude-chat, gemini-chat
     """
 
     DEFAULT_HOST = "127.0.0.1"
     DEFAULT_PORT = 8080
-    DEFAULT_MODEL = "qwen-chat"  # Modèle par défaut
-    
-    # Liste des 4 modèles standard de NEMAPI v3
-    AVAILABLE_MODELS = [
-        "deepseek-chat",
-        "qwen-chat", 
-        "claude-chat",
-        "gemini-chat"
-    ]
+    DEFAULT_MODEL = "qwen-chat"
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         import requests as req
 
         self.req = req
-        nv3_cfg = config.get("nemapi_v3", {})
-        # Priorité : section nemapi_v3 > provider.host/port/model > défauts
+        nv3_cfg = config.get("nemapi", config.get("nemapi_v3", {}))
         self.host = (
             nv3_cfg.get("host")
             or self.provider_config.get("host")
@@ -64,10 +55,7 @@ class NemapiV3Provider(BaseProvider):
             or self.DEFAULT_MODEL
         )
         
-        # Vérifier que le modèle est valide
-        if self.model not in self.AVAILABLE_MODELS:
-            # Si le modèle n'est pas dans la liste, utiliser le modèle par défaut
-            self.model = self.DEFAULT_MODEL
+        self._models_cache: List[Dict[str, Any]] = []
         
         self.timeout = int(self.provider_config.get("timeout", 180))
         self.max_retries = 3
@@ -90,14 +78,27 @@ class NemapiV3Provider(BaseProvider):
 
     def list_models(self) -> List[Dict[str, Any]]:
         """Liste les 4 modèles standard de NEMAPI v3."""
-        models = []
-        for model_id in self.AVAILABLE_MODELS:
-            models.append({
-                "id": model_id,
-                "owned_by": "nemapi-v3",
-                "display_name": model_id.replace("-", " ").title()
-            })
-        return models
+        try:
+            resp = self.req.get(f"{self.base_url}/models", timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            raw_models = data.get("data", data) if isinstance(data, dict) else data
+            models = []
+            for item in raw_models or []:
+                if isinstance(item, str):
+                    models.append({"id": item, "owned_by": "nemapi"})
+                elif isinstance(item, dict) and item.get("id"):
+                    models.append({
+                        "id": str(item["id"]),
+                        "owned_by": item.get("owned_by", "nemapi"),
+                        "display_name": item.get("display_name", str(item["id"]).replace("-", " ").title()),
+                    })
+            self._models_cache = models
+            if models and self.model not in {m["id"] for m in models}:
+                self.model = models[0]["id"]
+            return models
+        except Exception:
+            return list(self._models_cache)
 
     def send_message(self, message: str, role: str = "user") -> Dict[str, Any]:
         """Envoie uniquement le message courant au format OpenAI.
@@ -112,6 +113,9 @@ class NemapiV3Provider(BaseProvider):
                 f"{message}"
             )
             send_role = "user"
+        elif role == "system":
+            send_content = "[SYSTEM INSTRUCTIONS]\n" + message
+            send_role = "system"
         else:
             send_role = role
             send_content = message
@@ -255,11 +259,15 @@ class NemapiV3Provider(BaseProvider):
 
     def set_model(self, model: str) -> bool:
         """Change le modèle utilisé."""
-        if model in self.AVAILABLE_MODELS:
+        available = {item["id"] for item in self.list_models()}
+        if model in available:
             self.model = model
             return True
         return False
 
     def get_available_models(self) -> List[str]:
         """Retourne la liste des modèles disponibles."""
-        return list(self.AVAILABLE_MODELS)
+        return [item["id"] for item in self.list_models()]
+
+
+NemapiProvider = NemapiV3Provider

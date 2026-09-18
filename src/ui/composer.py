@@ -184,6 +184,9 @@ class Composer:
     def display_task_summary(self, elapsed: float, tool_count: int = 0):
         self.chat.task_summary(elapsed, tool_count)
 
+    def display_todo(self, items):
+        self.chat.todo_panel(items)
+
     def display_welcome(self, provider: str = "", target: str = ""):
         self.chat.welcome(self._version, provider, target)
 

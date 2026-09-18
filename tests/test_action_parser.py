@@ -219,6 +219,17 @@ def test_xml_format_rejected():
     assert r["action"] is None
 
 
+def test_batch_json_calls():
+    p = make_parser()
+    raw = json.dumps([
+        {"tool": "read_file", "parameters": {"path": "a.py"}},
+        {"tool": "grep", "parameters": {"pattern": "TODO", "path": "."}},
+    ])
+    r = p.parse(raw)
+    assert [item["type"] for item in r["actions"]] == ["read_file", "grep"]
+    assert r["action"] == r["actions"][0]
+
+
 if __name__ == "__main__":
     tests = [v for k, v in globals().items() if k.startswith("test_")]
     failed = 0

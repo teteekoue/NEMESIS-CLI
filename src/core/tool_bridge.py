@@ -18,12 +18,60 @@ class ToolBridge:
         if not self.workspace_root.exists():
             self.workspace_root.mkdir(parents=True, exist_ok=True)
         self.registry = create_registry(str(self.workspace_root))
+        self._read_paths = set()
+
+    def risk_for(self, tool_name: str, parameters: Dict[str, Any] | None = None) -> str:
+        """Return the runtime risk class used by approval UIs."""
+        risk = self.registry.risk_for(tool_name)
+        if tool_name == "bash":
+            command = str((parameters or {}).get("command", "")).lower()
+            if any(token in command for token in (
+                "rm ", "rm\t", "rmdir", "git push", "git reset", "git clean",
+                "kill ", "pkill ", "shutdown", "reboot", "drop table", "truncate ",
+                "curl ", "wget ", "nc ", "chmod ", "chown ",
+            )):
+                return "high"
+        return risk
+
+    def _check_paths(self, tool_name: str, parameters: Dict[str, Any]) -> str | None:
+        path_keys = ("path", "file_path", "target_file", "filename", "workdir")
+        for key in path_keys:
+            value = parameters.get(key)
+            if not value:
+                continue
+            values = value if isinstance(value, list) else [value]
+            for raw in values:
+                candidate = Path(str(raw)).expanduser()
+                resolved = (candidate if candidate.is_absolute() else self.workspace_root / candidate).resolve()
+                if resolved != self.workspace_root and self.workspace_root not in resolved.parents:
+                    return f"Path outside workspace is not allowed: {raw}"
+        return None
+
+    def _check_read_before_write(self, tool_name: str, parameters: Dict[str, Any]) -> str | None:
+        if tool_name not in {"edit", "delete_file"}:
+            return None
+        raw = parameters.get("file_path") or parameters.get("target_file") or parameters.get("path")
+        if not raw:
+            return None
+        path = (self.workspace_root / str(raw)).resolve()
+        if path.exists() and str(path) not in self._read_paths:
+            return f"Read the existing file with read_file before using {tool_name}: {raw}"
+        return None
 
     def execute_tool(self, tool_name: str, parameters: Dict[str, Any]):
         yield from self._execute(tool_name, parameters)
 
     def _execute(self, tool_name: str, parameters: Dict[str, Any]):
         try:
+            parameters = parameters or {}
+            path_error = self._check_paths(tool_name, parameters)
+            if path_error:
+                yield {"success": False, "stdout": path_error, "error": path_error}
+                return
+            read_error = self._check_read_before_write(tool_name, parameters)
+            if read_error:
+                yield {"success": False, "stdout": read_error, "error": read_error}
+                return
             reg = self.registry.get_tool(tool_name)
             if reg is None:
                 yield {"success": False, "stdout": f"Outil inconnu: {tool_name}"}
@@ -171,12 +219,22 @@ class ToolBridge:
                     yield {"success": False, "stdout": f"Outil non implemente ou parametres invalides: {tool_name}"}
                     return
 
+            if tool_name == "read_file" and getattr(result, "success", False):
+                read_values = parameters.get("paths") or [parameters.get("path")]
+                for raw in read_values:
+                    if raw:
+                        self._read_paths.add(str((self.workspace_root / str(raw)).resolve()))
+
             if isinstance(result, dict):
                 yield result
                 return
 
             if hasattr(result, "__iter__") and not isinstance(result, str):
                 for item in result:
+                    if tool_name == "read_file" and getattr(item, "get", lambda *_: False)("success"):
+                        for raw in parameters.get("paths") or [parameters.get("path")]:
+                            if raw:
+                                self._read_paths.add(str((self.workspace_root / str(raw)).resolve()))
                     yield item
                 return
 
@@ -197,13 +255,8 @@ class ToolBridge:
             yield {"success": False, "stdout": f"Erreur outil '{tool_name}': {str(e)}"}
 
     def get_system_prompt(self) -> str:
-        try:
-            from src.core.paths import prompt_system_path
-            prompt_path = prompt_system_path()
-        except Exception:
-            prompt_path = Path("prompt_system.txt")
-        if prompt_path.exists():
-            return prompt_path.read_text(encoding="utf-8")
+        # The live registry is the single source of truth for capabilities.
+        # A static prompt can drift from the installed handlers and schemas.
         return build_system_prompt(self.registry)
 
     def get_openai_tools(self) -> list:

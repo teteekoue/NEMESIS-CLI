@@ -96,6 +96,9 @@ class NemapiBridgeProvider(BaseProvider):
                 f"{message}"
             )
             send_role = "user"
+        elif role == "system":
+            send_content = "[SYSTEM INSTRUCTIONS]\n" + message
+            send_role = "system"
         else:
             send_role = role
             send_content = message

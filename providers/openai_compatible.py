@@ -81,15 +81,18 @@ class OpenAICompatibleProvider(BaseProvider):
         """Configure les outils disponibles pour le function calling."""
         self._tools_cache = tools
 
-    def send_message(self, message: str) -> Dict[str, Any]:
+    def send_message(self, message: str, role: str = "user") -> Dict[str, Any]:
         """Envoie un message via l'API OpenAI-compatible avec conservation du contexte."""
         try:
-            if not self._system_prompt_sent and self._is_system_prompt(message):
+            if role == "system" or (not self._system_prompt_sent and self._is_system_prompt(message)):
                 self._conversation.append({"role": "system", "content": message})
                 self._system_prompt_sent = True
                 return {"success": True, "response": "Systeme initialise. Pret a t'assister."}
 
-            self._conversation.append({"role": "user", "content": message})
+            self._conversation.append({
+                "role": "user" if role == "tool_result" else role,
+                "content": message,
+            })
 
             if len(self._conversation) > 51:
                 system_msgs = [m for m in self._conversation if m["role"] == "system"]
@@ -137,18 +140,24 @@ class OpenAICompatibleProvider(BaseProvider):
             ],
         })
 
-        tool_call = message.tool_calls[0]
-        tool_name = tool_call.function.name
-        try:
-            params = json.loads(tool_call.function.arguments)
-        except json.JSONDecodeError:
-            params = {}
+        tool_calls = []
+        for tool_call in message.tool_calls:
+            try:
+                params = json.loads(tool_call.function.arguments)
+            except json.JSONDecodeError:
+                params = {}
+            tool_calls.append({
+                "type": tool_call.function.name,
+                "content": params,
+                "id": tool_call.id,
+            })
 
         return {
             "success": True,
             "response": message.content or "",
-            "tool_call": {"type": tool_name, "content": params},
-            "tool_call_id": tool_call.id,
+            "tool_calls": tool_calls,
+            "tool_call": tool_calls[0],
+            "tool_call_id": tool_calls[0]["id"],
         }
 
     def send_tool_result(self, tool_call_id: str, tool_name: str, result: str) -> Dict[str, Any]:

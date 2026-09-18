@@ -427,6 +427,27 @@ class ChatUI:
             parts.append(f"{tool_count} tool(s)")
         self.console.print(Text("  " + " · ".join(parts), style=Catppuccin.OVERLAY0))
 
+    def todo_panel(self, items):
+        """Render the current task plan as a compact, readable terminal panel."""
+        from rich.table import Table
+        rows = items if isinstance(items, list) else []
+        table = Table(show_header=False, box=None, pad_edge=False, expand=True)
+        table.add_column("state", width=3)
+        table.add_column("task")
+        markers = {
+            "pending": ("○", Catppuccin.OVERLAY0),
+            "in_progress": ("●", Catppuccin.BLUE),
+            "completed": ("✓", Catppuccin.GREEN),
+            "cancelled": ("×", Catppuccin.RED),
+        }
+        for item in rows:
+            marker, color = markers.get(item.get("status", "pending"), ("?", Catppuccin.YELLOW))
+            table.add_row(Text(marker, style=f"bold {color}"), Text(item.get("content", ""), style=Catppuccin.TEXT))
+        if not rows:
+            table.add_row(Text("·", style=Catppuccin.OVERLAY0), Text("Aucune tâche planifiée", style=Catppuccin.SUBTEXT0))
+        self.console.print(Panel(table, title=Text(" plan ", style=f"bold {Catppuccin.MAUVE}"),
+                                 border_style=Catppuccin.SURFACE1, box=ROUNDED, padding=(0, 1)))
+
     def welcome(self, version: str = "2.1.0", provider: str = "", target: str = ""):
         w = _content_width(self.console)
         brand = Text()

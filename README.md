@@ -79,6 +79,14 @@ NEMESIS supporte plusieurs formats de réponse :
 - XML
 - Regex fallback
 
+### Appels d'outils par lot
+
+NEMESIS accepte un appel JSON unique ou un tableau JSON d'appels. Les
+opérations indépendantes de lecture/recherche peuvent ainsi être exécutées
+dans le même tour, tandis que les écritures dépendantes restent ordonnées.
+Le registre dynamique est la source canonique des noms, schémas et niveaux de
+risque exposés au CLI, à Telegram et aux sous-agents.
+
 ---
 
 ## Architecture
@@ -194,13 +202,13 @@ Le script d'installation :
 Le fichier de configuration principal contrôle le comportement de NEMESIS :
 
 ```yaml
-# Type de provider (bridge, nemapi_bridge, whisperer, openai_compatible)
+# Provider unique NEMAPI
 provider:
-  type: bridge
+  type: nemapi
   
-# Configuration du Bridge (si type = bridge)
-bridge:
-  host: 192.168.1.67
+# Configuration NEMAPI
+nemapi:
+  host: 127.0.0.1
   port: 8080
 
 # Configuration de sécurité

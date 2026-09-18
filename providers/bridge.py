@@ -44,7 +44,11 @@ class BridgeProvider(BaseProvider):
         except json.JSONDecodeError:
             return data
 
-    def send_message(self, message: str) -> Dict[str, Any]:
+    def send_message(self, message: str, role: str = "user") -> Dict[str, Any]:
+        if role == "system":
+            message = "[SYSTEM INSTRUCTIONS]\n" + message
+        if role == "tool_result":
+            message = "[TOOL RESULT]\n" + message
         last_error = ""
         for attempt in range(1, self.max_retries + 1):
             try:

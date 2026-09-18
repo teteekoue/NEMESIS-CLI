@@ -93,12 +93,12 @@ class ActionParser:
     # ------------------------------------------------------------------
 
     def parse(self, raw_response: str) -> Dict[str, Any]:
-        """Parse a raw LLM response and extract at most one tool call.
+        """Parse a raw LLM response and extract one or more tool calls.
 
         Returns:
-            {"text": str, "action": None | {"type": str, "content": dict}}
+            {"text": str, "actions": list, "action": first action or None}
         """
-        result: Dict[str, Any] = {"text": raw_response or "", "action": None}
+        result: Dict[str, Any] = {"text": raw_response or "", "action": None, "actions": []}
 
         if not raw_response or not isinstance(raw_response, str):
             return result
@@ -106,20 +106,44 @@ class ActionParser:
         if raw_response.startswith("FEEDBACK:"):
             return result
 
+        # Canonical batch form may be returned without a markdown fence.
+        stripped = raw_response.strip()
+        if stripped.startswith("["):
+            try:
+                parsed = json.loads(stripped)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, list):
+                actions = [self._validate_tool_obj(item) for item in parsed]
+                actions = [item for item in actions if item]
+                if actions:
+                    result["text"] = ""
+                    result["actions"] = actions
+                    result["action"] = actions[0]
+                    return result
+
         # 1. Prefer fenced ```json ... ``` blocks
-        action, consumed = self._extract_from_fences(raw_response)
-        if action:
-            text = self._remove_matched_fence(raw_response, consumed)
+        actions, consumed = self._extract_actions_from_fences(raw_response)
+        if actions:
+            text = raw_response
+            for fence in consumed:
+                text = self._remove_matched_fence(text, fence)
             result["text"] = text
-            result["action"] = action
+            result["actions"] = actions
+            result["action"] = actions[0]
             return result
 
-        # 2. Any balanced {...} object that looks like a tool call
-        action, span = self._extract_largest_tool_json(raw_response)
-        if action:
-            text = (raw_response[: span[0]] + raw_response[span[1] :]).strip()
-            result["text"] = text
-            result["action"] = action
+        # 2. Any balanced JSON objects that look like tool calls. Multiple
+        # sibling calls are preserved in source order.
+        extracted = self._extract_tool_json_objects(raw_response)
+        if extracted:
+            text = raw_response
+            for _, span in reversed(extracted):
+                text = text[: span[0]] + text[span[1] :]
+            actions = [action for action, _ in extracted]
+            result["text"] = text.strip()
+            result["actions"] = actions
+            result["action"] = actions[0]
             return result
 
         return result
@@ -144,6 +168,31 @@ class ActionParser:
                 if action:
                     return action, m.group(0)
         return None, None
+
+    def _extract_actions_from_fences(self, text: str) -> Tuple[List[Dict], List[str]]:
+        """Extract every valid tool call from fenced JSON blocks."""
+        actions: List[Dict] = []
+        fences: List[str] = []
+        pattern = re.compile(r"```(?:json|JSON)?\s*\n?(.*?)```", re.S)
+        for match in pattern.finditer(text):
+            candidate = match.group(1).strip()
+            if candidate.startswith("["):
+                try:
+                    parsed = json.loads(candidate)
+                except json.JSONDecodeError:
+                    parsed = None
+                if isinstance(parsed, list):
+                    parsed_actions = [self._validate_tool_obj(item) for item in parsed]
+                    parsed_actions = [item for item in parsed_actions if item]
+                    if parsed_actions:
+                        actions.extend(parsed_actions)
+                        fences.append(match.group(0))
+                        continue
+            action = self._parse_json_candidate(candidate) if candidate.startswith("{") else None
+            if action:
+                actions.append(action)
+                fences.append(match.group(0))
+        return actions, fences
 
     def _remove_matched_fence(self, full: str, fence: str) -> str:
         if not fence:
@@ -180,6 +229,30 @@ class ActionParser:
                 best_span = (start, end)
 
         return best, best_span
+
+    def _extract_tool_json_objects(
+        self, text: str
+    ) -> List[Tuple[Dict[str, Any], Tuple[int, int]]]:
+        """Extract non-overlapping sibling tool objects in source order."""
+        candidates: List[Tuple[Dict[str, Any], Tuple[int, int]]] = []
+        for start, ch in enumerate(text):
+            if ch != "{":
+                continue
+            end = self._find_matching_brace(text, start)
+            if end < 0:
+                continue
+            action = self._parse_json_candidate(text[start:end])
+            if action:
+                candidates.append((action, (start, end)))
+
+        # Keep outer candidates and discard nested parameter objects.
+        selected: List[Tuple[Dict[str, Any], Tuple[int, int]]] = []
+        for candidate in sorted(candidates, key=lambda item: (item[1][0], -(item[1][1] - item[1][0]))):
+            start, end = candidate[1]
+            if any(other[1][0] <= start and end <= other[1][1] for other in selected):
+                continue
+            selected.append(candidate)
+        return sorted(selected, key=lambda item: item[1][0])
 
     def _find_matching_brace(self, s: str, start: int) -> int:
         """Return index past the matching '}' or -1 if not found / unbalanced."""
@@ -417,6 +490,11 @@ class ActionParser:
 
     def _validate_tool_obj(self, obj: Any) -> Optional[Dict[str, Any]]:
         if not isinstance(obj, dict):
+            return None
+
+        # Native-style batches can be serialized as {"tool_calls": [...]}.
+        # The public parser exposes them through the normal actions list.
+        if isinstance(obj.get("tool_calls"), list):
             return None
 
         tool_name = (

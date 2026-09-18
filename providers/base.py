@@ -18,7 +18,7 @@ class BaseProvider(ABC):
         self._conversation: List[Dict[str, str]] = []
 
     @abstractmethod
-    def send_message(self, message: str) -> Dict[str, Any]:
+    def send_message(self, message: str, role: str = "user") -> Dict[str, Any]:
         """Envoie un message au LLM.
         Retourne {'success': True, 'response': str} ou {'success': False, 'error': str}.
         """

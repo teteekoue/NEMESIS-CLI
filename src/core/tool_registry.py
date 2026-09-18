@@ -9,6 +9,7 @@ class ToolRegistration:
     definition: ToolDefinition
     handler: Callable
     param_names: Dict[str, str] = field(default_factory=dict)
+    risk: str = "medium"
 
 
 class ToolRegistry:
@@ -25,6 +26,7 @@ class ToolRegistry:
         params_schema: dict,
         namespace: ToolNamespace = ToolNamespace.GROK_BUILD,
         param_names: Optional[Dict[str, str]] = None,
+        risk: Optional[str] = None,
     ) -> "ToolRegistry":
         self._tools[name] = ToolRegistration(
             definition=ToolDefinition(
@@ -36,8 +38,23 @@ class ToolRegistry:
             ),
             handler=handler,
             param_names=param_names or {},
+            risk=risk or self._default_risk(kind, name),
         )
         return self
+
+    @staticmethod
+    def _default_risk(kind: ToolKind, name: str) -> str:
+        if kind.is_read_only():
+            return "read"
+        if name in {"delete_file", "mcp_call", "kill_task"}:
+            return "high"
+        if name in {"bash", "apply_patch", "delegate_task"}:
+            return "medium"
+        return "medium"
+
+    def risk_for(self, name: str) -> str:
+        reg = self._tools.get(name)
+        return reg.risk if reg else "high"
 
     def finalize(self) -> "ToolRegistry":
         tools_map: Dict[ToolKind, str] = {}
@@ -124,6 +141,21 @@ class ToolRegistry:
             if key in properties:
                 cleaned[key] = value
 
+        def matches_type(value, expected):
+            if expected == "string":
+                return isinstance(value, str)
+            if expected == "integer":
+                return isinstance(value, int) and not isinstance(value, bool)
+            if expected == "number":
+                return isinstance(value, (int, float)) and not isinstance(value, bool)
+            if expected == "boolean":
+                return isinstance(value, bool)
+            if expected == "array":
+                return isinstance(value, list)
+            if expected == "object":
+                return isinstance(value, dict)
+            return True
+
         missing = [r for r in required if r not in cleaned]
         if missing:
             return (
@@ -132,10 +164,28 @@ class ToolRegistry:
                 f"Parametres requis manquants pour '{name}': {', '.join(missing)}",
             )
 
+        any_of = schema.get("anyOf") or []
+        if any_of and not any(
+            all(key in cleaned for key in option.get("required", []))
+            for option in any_of if isinstance(option, dict)
+        ):
+            choices = [" + ".join(option.get("required", [])) for option in any_of]
+            return False, {}, f"Parametres requis pour '{name}': {' ou '.join(choices)}"
+
+        for key, value in cleaned.items():
+            expected = properties.get(key, {}).get("type")
+            if expected and not matches_type(value, expected):
+                return False, {}, f"Parametre '{key}' invalide pour '{name}': type {expected} attendu"
+
         return True, cleaned, ""
 
     def tool_for_kind(self, kind: ToolKind) -> Optional[str]:
         if self._renderer:
+            # Several tools can share a kind (for example grep and glob).
+            # Keep the first canonical registration stable.
+            for name, reg in self._tools.items():
+                if reg.definition.kind == kind:
+                    return name
             return self._renderer.tool_for_kind(kind)
         for name, reg in self._tools.items():
             if reg.definition.kind == kind:

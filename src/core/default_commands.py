@@ -42,17 +42,7 @@ def increment_message_count():
 
 
 PROVIDER_LABELS = {
-    "bridge": "Bridge (Android/Local)",
-    "nemapi_bridge": "NEMAPI Bridge (Firefox/OpenAI)",
-    "nemapi-v3": "NEMAPI v3 (Firefox/OpenAI)",
-    "groq": "Groq",
-    "nvidia_nim": "Nvidia NIM",
-    "fireworks": "Fireworks AI",
-    "cohere": "Cohere",
-    "xai": "xAI Grok",
-    "openrouter": "OpenRouter",
-    "ollama": "Ollama local",
-    "whisperer": "Whisperer (llm-whisperer local)",
+    "nemapi": "NEMAPI",
 }
 
 
@@ -273,7 +263,7 @@ def about_command(args=None):
         ("L'agent autonome de codage et d'administration Linux.\n\n", "italic white"),
         ("Version : ", "dim"), ("2.1.0\n", "bold white"),
         ("Auteur : ", "dim"), ("Nemesis Team\n", "white"),
-        ("\nProviders: Bridge, Groq, Nvidia NIM, xAI Grok, OpenRouter, Ollama, Fireworks, Cohere", "grey50"),
+        ("\nProvider: NEMAPI — modèles via /v1/models", "grey50"),
     )
     console.print(Panel(text, border_style="bright_blue", expand=False))
 
@@ -521,16 +511,15 @@ def agents_command(args=None):
 
         choice = console.input("\nChoix > ").strip().lower()
         if choice == "1":
-            from src.core.agent_manager import PROVIDER_PRESETS, NEMAPI_V3_MODELS, NEMAPI_V3_DEFAULT_MODEL, NEMAPI_V3_DEFAULT_HOST, NEMAPI_V3_DEFAULT_PORT
+            from src.core.agent_manager import NEMAPI_V3_DEFAULT_MODEL, NEMAPI_V3_DEFAULT_HOST, NEMAPI_V3_DEFAULT_PORT
             name = console.input("Nom de l'agent : ").strip()
             if not name:
                 console.print("[error]Nom requis.[/error]")
                 continue
             # A2A: NemAPI v3 only
-            provider = "nemapi_v3"
-            console.print(f"[dim]Provider: NemAPI v3 uniquement[/dim]")
-            console.print(f"Modeles: {', '.join(NEMAPI_V3_MODELS)}")
-            model = console.input(f"Modele [{NEMAPI_V3_DEFAULT_MODEL}] : ").strip() or NEMAPI_V3_DEFAULT_MODEL
+            provider = "nemapi"
+            console.print("[dim]Provider: NEMAPI uniquement — les modèles sont récupérés depuis /v1/models[/dim]")
+            model = console.input(f"Modele (optionnel) [{NEMAPI_V3_DEFAULT_MODEL}] : ").strip() or NEMAPI_V3_DEFAULT_MODEL
             host = console.input(f"Host [{NEMAPI_V3_DEFAULT_HOST}] : ").strip() or NEMAPI_V3_DEFAULT_HOST
             port_s = console.input(f"Port [{NEMAPI_V3_DEFAULT_PORT}] : ").strip() or str(NEMAPI_V3_DEFAULT_PORT)
             try:
@@ -755,18 +744,19 @@ def provider_command(args=None):
         _ws_default = str(Path.home() / "nemesis-workspace")
     new_config = {"security": {"workspace": _active_app.config.get("security", {}).get("workspace", _ws_default)}}
 
-    if provider_type == "bridge":
-        host = console.input(f"IP Bridge [{_active_app.config.get('bridge', {}).get('host', '192.168.1.67')}] : ").strip()
-        port_str = console.input(f"Port [{_active_app.config.get('bridge', {}).get('port', 8080)}] : ").strip()
-        host = host or _active_app.config.get("bridge", {}).get("host", "192.168.1.67")
+    if provider_type == "nemapi":
+        current = _active_app.config.get("nemapi", _active_app.config.get("nemapi_v3", {}))
+        host = console.input(f"IP NEMAPI [{current.get('host', '127.0.0.1')}] : ").strip()
+        port_str = console.input(f"Port [{current.get('port', 8080)}] : ").strip()
+        host = host or current.get("host", "127.0.0.1")
         try:
-            port = int(port_str) if port_str else _active_app.config.get("bridge", {}).get("port", 8080)
+            port = int(port_str) if port_str else current.get("port", 8080)
         except ValueError:
             console.print("[error]Port invalide.[/error]")
             return
 
-        new_config["provider"] = {"type": "bridge"}
-        new_config["bridge"] = {"host": host, "port": port}
+        new_config["provider"] = {"type": "nemapi"}
+        new_config["nemapi"] = {"host": host, "port": port}
 
     elif provider_type == "nemapi_bridge":
         nb = _active_app.config.get("nemapi_bridge", {})
@@ -846,7 +836,7 @@ def provider_command(args=None):
         console.print(f"[error]Erreur: {e}[/error]")
         return
 
-    if provider_type not in ("bridge", "nemapi_bridge", "nemapi-v3"):
+    if provider_type == "nemapi":
         console.print("\n[system]Recuperation de la liste des modeles...[/system]")
         models = test_client.list_models()
 
@@ -931,21 +921,11 @@ def model_command(args=None):
 
     provider_type = _active_app.config.get("provider", {}).get("type", "bridge")
 
-    if provider_type in ("bridge", "nemapi_bridge"):
-        console.print("[yellow]Ce provider utilise les modeles configures cote serveur (aucun choix local).[/yellow]")
-        return
-
     console.print(f"\n[system]Recuperation des modeles depuis {PROVIDER_LABELS.get(provider_type, provider_type)}...[/system]")
     models = _active_app.client.list_models()
 
     if not models:
-        console.print(f"[yellow]Impossible de lister les modeles. Modele actuel: {_active_app.client.model}[/yellow]")
-        manual = console.input("Nouveau modele (laisser vide pour annuler) : ").strip()
-        if manual:
-            _active_app.config["provider"]["model"] = manual
-            _active_app._save_config()
-            _active_app.client.model = manual
-            console.print(f"[success]Modele change manuellement: {manual}[/success]")
+        console.print("[error]Impossible de récupérer les modèles depuis NEMAPI.[/error]")
         return
 
     models = [m for m in models if m.get("id")]

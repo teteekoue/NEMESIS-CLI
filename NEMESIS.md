@@ -9,7 +9,7 @@ NEMESIS est un agent de codage autonome en CLI, spécialisé dans l'ingénierie 
 ### Composants principaux
 
 - **`agent.py`** : Point d'entrée principal, classe `NemesisApp`
-- **`providers/`** : Providers LLM (bridge, nemapi-v3, openai-compatible, etc.)
+- **`providers/`** : Provider NEMAPI unique, avec contexte conservé côté serveur
 - **`src/core/`** : Logique métier (outils, commandes, A2A, MCP)
 - **`src/ui/`** : Interface utilisateur avec Rich
 - **`tools/`** : Outils système et exécuteur
@@ -18,9 +18,7 @@ NEMESIS est un agent de codage autonome en CLI, spécialisé dans l'ingénierie 
 
 | Provider | Description |
 |----------|-------------|
-| `bridge` | API Bridge Android (polling) |
-| `nemapi-v3` | API NEMAPI v3 (Firefox extension) |
-| `openai-compatible` | Providers compatibles OpenAI (Groq, Nvidia, etc.) |
+| `nemapi` | API NEMAPI v3 (contexte serveur, modèles via `/v1/models`) |
 | `ollama` | Ollama local |
 
 ### Subagents (A2A)
@@ -113,7 +111,7 @@ bridge:
   port: 8080
 
 provider:
-  type: nemapi-v3
+  type: nemapi
   model: deepseek-chat
 
 nemapi_v3:

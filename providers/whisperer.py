@@ -45,15 +45,18 @@ class WhispererProvider(BaseProvider):
             {"id": "claude", "owned_by": "Anthropic"},
         ]
 
-    def send_message(self, message: str) -> Dict[str, Any]:
+    def send_message(self, message: str, role: str = "user") -> Dict[str, Any]:
         """Envoie un message au proxy whisperer (format OpenAI-compatible)."""
         try:
-            if not self._system_prompt_sent and self._is_system_prompt(message):
+            if role == "system" or (not self._system_prompt_sent and self._is_system_prompt(message)):
                 self._conversation.append({"role": "system", "content": message})
                 self._system_prompt_sent = True
                 return {"success": True, "response": "Systeme initialise. Pret a t'assister."}
 
-            self._conversation.append({"role": "user", "content": message})
+            self._conversation.append({
+                "role": "user" if role == "tool_result" else role,
+                "content": message,
+            })
 
             if len(self._conversation) > 51:
                 system_msgs = [m for m in self._conversation if m["role"] == "system"]

@@ -36,8 +36,7 @@ from .a2a_protocol import (
 )
 
 
-# Providers for A2A sub-agents (NemAPI v3 local OR OpenAI-compatible cloud)
-NEMAPI_V3_MODELS = ["deepseek-chat", "qwen-chat", "claude-chat", "gemini-chat"]
+# Subagents use the same server-side-context NEMAPI provider as the main agent.
 NEMAPI_V3_DEFAULT_HOST = "127.0.0.1"
 NEMAPI_V3_DEFAULT_PORT = 8080
 NEMAPI_V3_DEFAULT_MODEL = "qwen-chat"
@@ -46,11 +45,6 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
 # A2A sub-agents: NemAPI v3 only (same as main agent context model)
 PROVIDER_PRESETS: Dict[str, Dict[str, Any]] = {
-    "nemapi_v3": {
-        "base_url": f"http://{NEMAPI_V3_DEFAULT_HOST}:{NEMAPI_V3_DEFAULT_PORT}/v1",
-        "default_model": NEMAPI_V3_DEFAULT_MODEL,
-        "kind": "nemapi_v3",
-    },
     "nemapi": {
         "base_url": f"http://{NEMAPI_V3_DEFAULT_HOST}:{NEMAPI_V3_DEFAULT_PORT}/v1",
         "default_model": NEMAPI_V3_DEFAULT_MODEL,
@@ -68,7 +62,7 @@ DEFAULT_SUBAGENT_SYSTEM = """You are a NEMESIS teammate — a peer coding agent 
 
 ## Core rules (non-negotiable)
 
-1. **One tool call per response.** Emit exactly one JSON tool-call, then stop and wait for FEEDBACK. Never batch multiple tools in one message.
+1. **Batch independent tools.** Emit one JSON tool call or a JSON array of independent calls. Keep dependent writes ordered.
 2. **JSON only for actions.** Tool calls and completion reports are pure JSON (optionally inside a ```json fence). No YAML, no pseudo-tools.
 3. **Valid JSON.** Escape `"`, `\\`, newlines (`\\n`), tabs. No trailing commas.
 4. **Read before edit.** Call `read_file` before `edit`. Copy exact text from FEEDBACK (ignore `LINE_NUMBER→` prefixes).
@@ -102,7 +96,7 @@ __TOOLS_SECTION__
 ## Workflow
 
 1. Understand the task. If useful, `todo` to track steps.
-2. Act with one tool → wait for FEEDBACK → adapt.
+2. Batch safe discovery calls, then use their combined FEEDBACK to adapt.
 3. Prefer `edit` over full `write_file` for small changes; `read_file` before editing.
 4. Verify with `bash` (tests, lint) when the task requires it.
 5. When the task is fully done, emit a completion report (not a tool call):
@@ -133,7 +127,7 @@ class A2AAgentClient:
         self,
         name: str,
         api_key: str = "",
-        provider: str = "nemapi_v3",
+        provider: str = "nemapi",
         model: str = "",
         base_url: str = "",
         executor: Optional[Any] = None,
@@ -141,21 +135,18 @@ class A2AAgentClient:
         port: int = 0,
     ):
         self.name = name
-        self.provider = (provider or "nemapi_v3").lower().strip()
-        # A2A sub-agents are NemAPI v3 only
+        self.provider = (provider or "nemapi").lower().strip().replace("-v3", "")
         if self.provider not in PROVIDER_PRESETS:
-            self.provider = "nemapi_v3"
-        preset = PROVIDER_PRESETS.get(self.provider, PROVIDER_PRESETS["nemapi_v3"])
+            self.provider = "nemapi"
+        preset = PROVIDER_PRESETS["nemapi"]
         self._kind = preset.get("kind", "openai")
 
-        if self.provider in ("nemapi_v3", "nemapi") or self._kind == "nemapi_v3":
-            self.provider = "nemapi_v3"
+        if self.provider == "nemapi":
             self._kind = "nemapi_v3"
             self.host = (host or os.environ.get("NEMAPI_HOST") or NEMAPI_V3_DEFAULT_HOST).strip()
             self.port = int(port or os.environ.get("NEMAPI_PORT") or NEMAPI_V3_DEFAULT_PORT)
             self.base_url = (base_url or f"http://{self.host}:{self.port}/v1").rstrip("/")
-            candidate = (model or NEMAPI_V3_DEFAULT_MODEL).strip()
-            self.model = candidate if candidate in NEMAPI_V3_MODELS else NEMAPI_V3_DEFAULT_MODEL
+            self.model = (model or NEMAPI_V3_DEFAULT_MODEL).strip()
             self.api_key = api_key or "nemapi"
         else:
             self.host = host or ""
@@ -225,7 +216,7 @@ class A2AAgentClient:
         return cls(
             name=name,
             api_key=cfg.get("api_key", ""),
-            provider=cfg.get("provider", "nemapi_v3"),
+            provider="nemapi",
             model=cfg.get("model", ""),
             base_url=cfg.get("base_url", ""),
             host=cfg.get("host", ""),
@@ -319,6 +310,7 @@ class A2AAgentClient:
         """Return (tool_name, params) from various JSON tool-call shapes, or (None, None)."""
         if not isinstance(parsed, dict):
             return None, None
+
         # Skip pure A2A / report envelopes
         if parsed.get("a2a_version") or parsed.get("type") in (
             "task_report", "task_ack", "task_progress", "capability_report",
@@ -362,6 +354,7 @@ class A2AAgentClient:
         """Scan response text for the first valid tool-call JSON. Returns (name, params) or (None, None)."""
         if not response_text or not response_text.strip():
             return None, None
+
         # Prefer ActionParser when available (same as main agent)
         try:
             from action_parser import ActionParser
@@ -395,6 +388,21 @@ class A2AAgentClient:
                 return tool_name, params or {}
         return None, None
 
+    def _detect_tool_calls(self, response_text: str):
+        """Return all canonical tool calls in a model turn."""
+        try:
+            from action_parser import ActionParser
+            parsed = ActionParser().parse(response_text)
+            actions = parsed.get("actions") or []
+            return [
+                (item.get("type"), item.get("content") or {})
+                for item in actions
+                if isinstance(item, dict) and item.get("type")
+            ]
+        except Exception as e:
+            _a2a_debug(f"[DEBUG] batch tool parser failed: {e}")
+            one = self._detect_tool_call(response_text)
+            return [one] if one[0] else []
 
     def _call_llm(self, messages: List[dict]) -> str:
         """Call NemAPI v3 LLM; return assistant text.
@@ -510,23 +518,28 @@ class A2AAgentClient:
 
             # --- Detect and execute text JSON tool calls ---
             if self._executor and (response_text or "").strip() and _tool_depth < max_tool_depth:
-                tool_name, params = self._detect_tool_call(response_text)
-                if tool_name and tool_name not in (
-                    "task_report", "task_ack", "task_progress", "done", "finish",
-                    "capability_report", "heartbeat_ack", "error", "cancel_ack",
-                ):
-                    _a2a_debug(f"[DEBUG] Tool call détecté: {tool_name} params={list(params.keys()) if isinstance(params, dict) else params}")
-                    result = self._run_executor_tool(tool_name, params or {})
-                    success = result.get("success", True)
-                    output = result.get("stdout", result.get("content", str(result)))
-                    # Truncate huge outputs to keep context manageable
-                    out_str = str(output)
-                    if len(out_str) > 12000:
-                        out_str = out_str[:12000] + "\n...[truncated]..."
-                    feedback = (
-                        f"FEEDBACK:\nTool: {tool_name}\nSucces: {success}\nOutput:\n{out_str}"
-                    )
-                    return self.send_message(feedback, role="user", _tool_depth=_tool_depth + 1)
+                tool_calls = self._detect_tool_calls(response_text)
+                if tool_calls:
+                    feedback_parts = []
+                    for tool_name, params in tool_calls:
+                        if tool_name in (
+                            "task_report", "task_ack", "task_progress", "done", "finish",
+                            "capability_report", "heartbeat_ack", "error", "cancel_ack",
+                        ):
+                            continue
+                        _a2a_debug(f"[DEBUG] Tool call détecté: {tool_name}")
+                        result = self._run_executor_tool(tool_name, params or {})
+                        success = result.get("success", True)
+                        output = result.get("stdout", result.get("content", str(result)))
+                        out_str = str(output)
+                        if len(out_str) > 12000:
+                            out_str = out_str[:12000] + "\n...[truncated]..."
+                        feedback_parts.append(
+                            f"Tool: {tool_name}\nSucces: {success}\nOutput:\n{out_str}"
+                        )
+                    if feedback_parts:
+                        feedback = "FEEDBACK:\n" + "\n\n".join(feedback_parts)
+                        return self.send_message(feedback, role="user", _tool_depth=_tool_depth + 1)
 
             return response_text or ""
 
@@ -593,8 +606,8 @@ class A2AAgentClient:
         # First message: models often skip ACK and start working immediately.
         # send_message already executes tool calls recursively until a final text reply.
         raw = self.send_message(
-            "Task assigned (A2A). Work autonomously with ONE tool call per reply, "
-            "wait for FEEDBACK, then continue. When fully done emit task_report JSON.\n\n"
+            "Task assigned (A2A). Work autonomously, batching independent tool calls "
+            "when useful, and use FEEDBACK to continue. When fully done emit task_report JSON.\n\n"
             f"task_id: {manifest.task_id}\n"
             f"label: {manifest.label}\n"
             f"description: {manifest.description}\n"
@@ -627,14 +640,14 @@ class A2AAgentClient:
             if iteration == 1:
                 prompt = (
                     "Task for you (NEMESIS teammate). "
-                    "Use exactly ONE tool call per response, wait for FEEDBACK, then continue. "
+                    "Batch independent tool calls when useful, use FEEDBACK to continue, and "
                     "When fully done, emit a task_report JSON (type=task_report, status=completed).\n\n"
                     f"{manifest.description}"
                 )
             else:
                 prompt = (
-                    "Continue the task. One tool call only "
-                    '{"tool":"...","parameters":{...}} — or a final task_report if done.'
+                    "Continue the task. Use one JSON tool call or a JSON array of "
+                    "independent calls — or a final task_report if done."
                 )
 
             response = self.send_message(prompt, role="user")
