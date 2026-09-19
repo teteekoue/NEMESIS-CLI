@@ -37,7 +37,7 @@ from .a2a_protocol import (
 
 # Subagents use the same server-side-context NEMAPI provider as the main agent.
 NEMAPI_V3_DEFAULT_HOST = "127.0.0.1"
-NEMAPI_V3_DEFAULT_PORT = 8080
+NEMAPI_V3_DEFAULT_PORT = 8090
 NEMAPI_V3_DEFAULT_MODEL = "qwen-chat"
 # A2A sub-agents: NemAPI v3 only (same as main agent context model)
 PROVIDER_PRESETS: Dict[str, Dict[str, Any]] = {

@@ -55,7 +55,7 @@ provider:
 
 nemapi:
   host: 127.0.0.1
-  port: 8080
+  port: 8090
 
 security:
   workspace: ./workspace
@@ -72,7 +72,8 @@ que l'agent principal. Aucun token de fournisseur n'est requis par NEMESIS.
 |----------|-------------|
 | `/help` | Affiche les commandes disponibles |
 | `/clear` | Efface l'écran |
-| `/config` | Affiche la configuration |
+| `/config` | Configure l'URL et le port du serveur NEMAPI |
+| `/models` | Liste et sélectionne un modèle officiel, ou saisie manuelle |
 | `/stats` | Statistiques de session |
 | `/agents` | Gestion des subagents |
 | `/delegate <agent> <instruction>` | Délègue une tâche |

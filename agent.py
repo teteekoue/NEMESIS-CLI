@@ -89,7 +89,7 @@ class NemesisApp:
             needs_save = True
         if not isinstance(self.config.get("nemapi"), dict):
             legacy = self.config.get("nemapi_v3", {})
-            self.config["nemapi"] = legacy if isinstance(legacy, dict) else {"host": "127.0.0.1", "port": 8080}
+            self.config["nemapi"] = legacy if isinstance(legacy, dict) else {"host": "127.0.0.1", "port": 8090}
             needs_save = True
         if not isinstance(self.config.get("security"), dict):
             self.config["security"] = {"workspace": str(DEFAULT_WORKSPACE)}
@@ -131,7 +131,7 @@ class NemesisApp:
             yaml.dump(to_save, f, default_flow_style=False, allow_unicode=True)
 
     def reconfigure_provider(self, new_config: Dict[str, Any]):
-        """Reconfigure le provider a chaud (appelle par /provider)."""
+        """Reconfigure NEMAPI a chaud (appelee par /config)."""
         old_conversation = self.client.get_conversation() if self.client else []
         try:
             new_client = create_provider(new_config)
@@ -262,7 +262,7 @@ class NemesisApp:
             self._conn_ok = self.client.test_connection()
 
         if self._conn_ok is False:
-            self.console.print("[error]Aucun provider connecte. Utilisez /provider pour en configurer un.[/error]")
+            self.console.print("[error]NEMAPI n'est pas connecte. Utilisez /config pour le configurer.[/error]")
             return
 
         # Envoi du prompt systeme au premier message (une seule fois par session)

@@ -241,42 +241,6 @@ def stats_command(args=None):
     console.print(table)
 
 
-@registry.register("config", "Affiche la configuration actuelle du provider")
-def config_command(args=None):
-    try:
-        from src.core.paths import config_path as _cfg_path
-        config_path = _cfg_path()
-    except Exception:
-        config_path = Path(__file__).resolve().parent.parent.parent / "config.yaml"
-    if not config_path.exists():
-        console.print("[error]Configuration introuvable.[/error]")
-        return
-
-    with open(config_path, "r") as f:
-        config_data = yaml.safe_load(f) or {}
-
-    table = Table(title="Configuration Actuelle", border_style="bright_cyan")
-    table.add_column("Section", style="cyan")
-    table.add_column("Parametre", style="dim")
-    table.add_column("Valeur", style="white")
-
-    provider = config_data.get("provider", {})
-    p_type = provider.get("type", "bridge")
-    table.add_row("Provider", "Type", PROVIDER_LABELS.get(p_type, p_type))
-    if p_type != "bridge":
-        table.add_row("Provider", "Model", provider.get("model", "N/A"))
-        table.add_row("Provider", "API Key", provider.get("api_key", "")[:8] + "..." if provider.get("api_key") else "N/A")
-    if p_type == "nemapi_bridge":
-        nb = config_data.get("nemapi_bridge", {})
-        table.add_row("NEMAPI Bridge", "Host", nb.get("host", "N/A"))
-        table.add_row("NEMAPI Bridge", "Port", str(nb.get("port", "N/A")))
-    bridge = config_data.get("bridge", {})
-    table.add_row("Bridge", "Host", bridge.get("host", "N/A"))
-    table.add_row("Bridge", "Port", str(bridge.get("port", "N/A")))
-    table.add_row("Securite", "Workspace", config_data.get("security", {}).get("workspace", "N/A"))
-    console.print(table)
-
-
 @registry.register("about", "Informations sur NEMESIS-CLI")
 def about_command(args=None):
     text = Text.assemble(
@@ -759,35 +723,18 @@ def skills_command(args=None):
 
 
 # =====================================================================
-# NOUVELLES COMMANDES : provider, model, history
+# NOUVELLES COMMANDES : config, models, history
 # =====================================================================
 
-@registry.register("provider", "Configure le provider LLM et selectionne un modele")
-def provider_command(args=None):
+@registry.register("config", "Configure l'URL et le port du serveur NEMAPI", "/config")
+def config_command(args=None):
     if not _active_app:
         console.print("[error]Application non initialisee.[/error]")
         return
 
-    console.print("\n[bold magenta]Configuration du Provider[/bold magenta]\n")
+    console.print("\n[bold magenta]Configuration du serveur NEMAPI[/bold magenta]\n")
 
-    choices = list(PROVIDER_LABELS.keys())
-    labels = list(PROVIDER_LABELS.values())
-
-    console.print("Providers disponibles :")
-    for i, (key, label) in enumerate(PROVIDER_LABELS.items(), 1):
-        console.print(f"  {i}. [bold]{label}[/bold] ({key})")
-    console.print()
-
-    choice = console.input(f"Choix (1-{len(choices)}) : ").strip()
-    try:
-        idx = int(choice) - 1
-        if idx < 0 or idx >= len(choices):
-            console.print("[error]Choix invalide.[/error]")
-            return
-        provider_type = choices[idx]
-    except ValueError:
-        console.print("[error]Entrez un numero.[/error]")
-        return
+    provider_type = "nemapi"
 
     try:
         from src.core.paths import DEFAULT_WORKSPACE
@@ -796,87 +743,37 @@ def provider_command(args=None):
         _ws_default = str(Path.home() / "nemesis-workspace")
     new_config = {"security": {"workspace": _active_app.config.get("security", {}).get("workspace", _ws_default)}}
 
-    if provider_type == "nemapi":
-        current = _active_app.config.get("nemapi", _active_app.config.get("nemapi_v3", {}))
-        host = console.input(f"IP NEMAPI [{current.get('host', '127.0.0.1')}] : ").strip()
-        port_str = console.input(f"Port [{current.get('port', 8080)}] : ").strip()
-        host = host or current.get("host", "127.0.0.1")
-        try:
-            port = int(port_str) if port_str else current.get("port", 8080)
-        except ValueError:
-            console.print("[error]Port invalide.[/error]")
-            return
-
-        new_config["provider"] = {"type": "nemapi"}
-        new_config["nemapi"] = {"host": host, "port": port}
-
-    elif provider_type == "nemapi_bridge":
-        nb = _active_app.config.get("nemapi_bridge", {})
-        host = console.input(f"IP NEMAPI Bridge [{nb.get('host', '127.0.0.1')}] : ").strip()
-        port_str = console.input(f"Port [{nb.get('port', 8080)}] : ").strip()
-        host = host or nb.get("host", "127.0.0.1")
-        try:
-            port = int(port_str) if port_str else nb.get("port", 8080)
-        except ValueError:
-            console.print("[error]Port invalide.[/error]")
-            return
-
-        new_config["provider"] = {"type": "nemapi_bridge"}
-        new_config["nemapi_bridge"] = {"host": host, "port": port}
-        new_config["bridge"] = _active_app.config.get("bridge", {})
-
-    elif provider_type == "nemapi-v3":
-        nv3 = _active_app.config.get("nemapi_v3", {})
-        host = console.input(f"IP NEMAPI v3 [{nv3.get('host', '127.0.0.1')}] : ").strip()
-        port_str = console.input(f"Port [{nv3.get('port', 8080)}] : ").strip()
-        host = host or nv3.get("host", "127.0.0.1")
-        try:
-            port = int(port_str) if port_str else nv3.get("port", 8080)
-        except ValueError:
-            console.print("[error]Port invalide.[/error]")
-            return
-
-        new_config["provider"] = {"type": "nemapi-v3"}
-        new_config["nemapi_v3"] = {"host": host, "port": port}
-        new_config["bridge"] = _active_app.config.get("bridge", {})
-
-    elif provider_type == "whisperer":
-        current_endpoint = ""
-        current_token = ""
-        if _active_app.config.get("provider", {}).get("type") == "whisperer":
-            current_endpoint = _active_app.config["provider"].get("base_url", "http://localhost:9777/v1")
-            current_token = _active_app.config["provider"].get("api_key", "")
-
-        endpoint = console.input(f"Endpoint [{current_endpoint}] : ").strip()
-        endpoint = endpoint or current_endpoint or "http://localhost:9777/v1"
-
-        token_prompt = f"Token (optionnel, defaut: sk-dummy-key) [{current_token[:8] + '...' if current_token else ''}] : "
-        token = console.input(token_prompt).strip()
-        token = token or current_token or "sk-dummy-key"
-
-        new_config["provider"] = {
-            "type": "whisperer",
-            "base_url": endpoint,
-            "api_key": token,
-        }
-        new_config["bridge"] = _active_app.config.get("bridge", {})
-
+    current = _active_app.config.get("nemapi", _active_app.config.get("nemapi_v3", {}))
+    current_url = current.get("url") or current.get("host", "127.0.0.1")
+    url = console.input(f"URL NEMAPI [{current_url}] : ").strip()
+    port_str = console.input(f"Port [{current.get('port', 8090)}] : ").strip()
+    url = url or current_url
+    if "://" in url:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+        if not port_str and parsed.port:
+            port_str = str(parsed.port)
     else:
-        current_api_key = ""
-        if _active_app.config.get("provider", {}).get("type") == provider_type:
-            current_api_key = _active_app.config["provider"].get("api_key", "")
-        prompt_key = f"Cle API [{current_api_key[:8]}...] : " if current_api_key else "Cle API : "
-        api_key = console.input(prompt_key).strip()
-        api_key = api_key or current_api_key
+        host = url.rstrip("/")
+    if not host:
+        console.print("[error]URL NEMAPI invalide.[/error]")
+        return
+    try:
+        port = int(port_str) if port_str else current.get("port", 8090)
+        if not 1 <= port <= 65535:
+            raise ValueError
+    except ValueError:
+        console.print("[error]Port invalide (1-65535).[/error]")
+        return
 
-        if not api_key:
-            console.print("[error]Cle API requise.[/error]")
-            return
+    new_config["provider"] = {
+        "type": "nemapi",
+        "model": _active_app.config.get("provider", {}).get("model", ""),
+    }
+    new_config["nemapi"] = {"host": host, "port": port}
 
-        new_config["provider"] = {"type": provider_type, "api_key": api_key}
-        new_config["bridge"] = _active_app.config.get("bridge", {})
-
-    console.print("\n[system]Test de connexion...[/system]")
+    console.print("\n[system]Test de connexion a NEMAPI...[/system]")
     from providers import create_provider
     try:
         test_client = create_provider(new_config)
@@ -893,8 +790,8 @@ def provider_command(args=None):
         models = test_client.list_models()
 
         if not models:
-            console.print("[yellow]Aucun modele recupere. Saisie manuelle.[/yellow]")
-            model = console.input("Modele : ").strip()
+            console.print("[yellow]Liste officielle indisponible. Saisie de l'identifiant du modele.[/yellow]")
+            model = console.input("ID du modele NEMAPI : ").strip()
             if not model:
                 console.print("[error]Modele requis.[/error]")
                 return
@@ -965,8 +862,9 @@ def provider_command(args=None):
         console.print(f"[error]Echec: {msg}[/error]")
 
 
-@registry.register("model", "Change le modele du provider actuel")
-def model_command(args=None):
+@registry.register("models", "Liste les modeles NEMAPI et permet d'en selectionner un", "/models")
+@registry.register("model", "Alias de /models")
+def models_command(args=None):
     if not _active_app or not _active_app.client:
         console.print("[error]Aucun provider actif.[/error]")
         return
@@ -974,10 +872,23 @@ def model_command(args=None):
     provider_type = _active_app.config.get("provider", {}).get("type", "bridge")
 
     console.print(f"\n[system]Recuperation des modeles depuis {PROVIDER_LABELS.get(provider_type, provider_type)}...[/system]")
-    models = _active_app.client.list_models()
+    try:
+        models = _active_app.client.list_models()
+    except Exception as exc:
+        console.print(f"[yellow]Impossible de recuperer la liste officielle : {exc}[/yellow]")
+        models = []
 
     if not models:
-        console.print("[error]Impossible de récupérer les modèles depuis NEMAPI.[/error]")
+        console.print("[yellow]NEMAPI n'a pas retourne de modeles.[/yellow]")
+        manual = console.input(f"ID du modele [{_active_app.client.model or 'gemini-chat'}] : ").strip()
+        selected = manual or _active_app.client.model
+        if not selected:
+            console.print("[error]Identifiant de modele requis.[/error]")
+            return
+        _active_app.config.setdefault("provider", {})["model"] = selected
+        _active_app._save_config()
+        _active_app.client.model = selected
+        console.print(f"[success]Modele configure : {selected}[/success]")
         return
 
     models = [m for m in models if m.get("id")]

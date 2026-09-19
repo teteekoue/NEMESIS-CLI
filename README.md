@@ -203,7 +203,7 @@ provider:
 
 nemapi:
   host: 127.0.0.1
-  port: 8080
+  port: 8090
 
 # Configuration de sécurité
 security:
@@ -225,9 +225,11 @@ mcp:
     - filesystem
 ```
 
-NEMAPI expose la liste réelle de ses modèles via `GET /v1/models`. La
-configuration peut laisser `model` vide pour utiliser le premier modèle
-retourné, ou préciser l'identifiant d'un modèle disponible. NEMESIS envoie
+NEMAPI expose la liste réelle de ses modèles via `GET /v1/models`. Utilisez
+`/config` pour modifier l'URL et le port du serveur, puis `/models` pour
+sélectionner un modèle officiel. Si la liste est indisponible, `/models`
+permet de saisir directement l'identifiant du modèle. La configuration peut
+laisser `model` vide pour utiliser le premier modèle retourné. NEMESIS envoie
 uniquement le message courant : l'historique et le contexte du prompt système
 sont conservés par NEMAPI.
 
@@ -423,10 +425,10 @@ NEMESIS propose des commandes spéciales préfixées par `/` :
 | `/help` | Affiche la liste des commandes disponibles |
 | `/status` | Affiche la connexion, le modèle, le endpoint et le workspace |
 | `/todo` | Affiche le plan de travail courant |
-| `/model` | Sélectionne un modèle NEMAPI depuis `/v1/models` |
-| `/provider` | Configure le provider IA |
+| `/models` | Liste et sélectionne un modèle NEMAPI depuis `/v1/models` |
+| `/model` | Alias de `/models` |
 | `/tools` | Liste les outils disponibles |
-| `/config` | Affiche la configuration active |
+| `/config` | Configure l'URL et le port du serveur NEMAPI |
 | `/stats` | Affiche les statistiques de session |
 | `/history` | Consulte ou gère l'historique |
 | `/agents` | Gère les sous-agents (délégation) |
@@ -442,7 +444,7 @@ NEMESIS propose des commandes spéciales préfixées par `/` :
 /help
 
 # Sélectionner un modèle NEMAPI depuis le serveur
-/model
+/models
 
 # Lister les outils
 /tools

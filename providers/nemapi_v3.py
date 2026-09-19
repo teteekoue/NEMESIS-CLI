@@ -7,6 +7,7 @@ serveur. Les modèles sont récupérés dynamiquement via ``GET /v1/models``.
 
 import json
 import time
+from urllib.parse import urlparse
 from typing import Dict, Any, List
 
 from providers.base import BaseProvider
@@ -22,7 +23,7 @@ class NemapiV3Provider(BaseProvider):
     """
 
     DEFAULT_HOST = "127.0.0.1"
-    DEFAULT_PORT = 8080
+    DEFAULT_PORT = 8090
     DEFAULT_MODEL = "qwen-chat"
 
     def __init__(self, config: Dict[str, Any]):
@@ -31,14 +32,22 @@ class NemapiV3Provider(BaseProvider):
 
         self.req = req
         nv3_cfg = config.get("nemapi", config.get("nemapi_v3", {}))
+        configured_url = (
+            nv3_cfg.get("url")
+            or self.provider_config.get("url")
+            or ""
+        ).strip()
+        parsed_url = urlparse(configured_url if "://" in configured_url else f"http://{configured_url}") if configured_url else None
         self.host = (
             nv3_cfg.get("host")
             or self.provider_config.get("host")
+            or (parsed_url.hostname if parsed_url else None)
             or self.DEFAULT_HOST
         )
         self.port = int(
             nv3_cfg.get("port")
             or self.provider_config.get("port")
+            or (parsed_url.port if parsed_url else None)
             or self.DEFAULT_PORT
         )
         self.base_url = f"http://{self.host}:{self.port}"
@@ -56,6 +65,7 @@ class NemapiV3Provider(BaseProvider):
         self.max_retries = 3
         self.retry_delay = 3
         self._conversation: List[Dict[str, str]] = []
+        self._session_started = False
 
     def test_connection(self) -> bool:
         """Teste /status puis fallback sur la racine."""
@@ -122,6 +132,9 @@ class NemapiV3Provider(BaseProvider):
                     "model": self.model,
                     "messages": [{"role": send_role, "content": send_content}],
                     "stream": False,
+                    # Start Nemesis on a clean provider chat, then keep the
+                    # browser-native context for tool-result iterations.
+                    "fresh_chat": not self._session_started,
                 }
                 resp = self.req.post(
                     f"{self.base_url}/v1/chat/completions",
@@ -144,6 +157,7 @@ class NemapiV3Provider(BaseProvider):
                     data = json.loads(text)
                     if isinstance(data, dict) and 'choices' in data:
                         reply = self._extract_reply(data)
+                        self._session_started = True
                         return {"success": True, "response": reply}
                 except json.JSONDecodeError:
                     pass
@@ -173,6 +187,7 @@ class NemapiV3Provider(BaseProvider):
                             continue
                     
                     if full_content:
+                        self._session_started = True
                         return {"success": True, "response": full_content}
                 
                 # Si aucun contenu n'a été extrait, retourner une erreur
