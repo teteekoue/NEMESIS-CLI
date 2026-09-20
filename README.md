@@ -793,3 +793,44 @@ Le bot exécutera l'outil et retournera le résultat.
 **Prêt à coder avec NEMESIS !** 🚀
 
 *Documentation mise à jour le 5 août 2026*
+
+---
+
+## Interface Web NEMESIS
+
+NEMESIS inclut maintenant une interface web qui réutilise le moteur CLI existant :
+`ActionParser`, `ToolBridge`, le registre des 23 outils, les contrôles de risque et
+le provider NEMAPI ne sont pas réimplémentés dans le navigateur.
+
+### Lancer l'interface
+
+```bash
+# Depuis la racine du dépôt
+./run_web.sh
+# ou
+python3 web_server.py --host 0.0.0.0 --port 8000
+```
+
+Ouvrez ensuite `http://localhost:8000`. Le serveur web est volontairement basé
+sur la bibliothèque standard Python pour démarrer même avant l'installation des
+dépendances optionnelles du CLI.
+
+### Fonctionnalités web
+
+- chat temps réel via Server-Sent Events ;
+- mode **Preview local** pour tester l'interface, les outils et les approbations
+  sans NEMAPI ;
+- mode **Live** qui utilise le provider NEMAPI configuré dans `config.yaml` ;
+- boucle agent → outil → feedback identique au CLI, avec jusqu'à 50 itérations ;
+- approbation par action (`Autoriser`, `Toujours`, `Refuser`) et classification
+  `read / medium / high` provenant de `ToolBridge` ;
+- explorateur du workspace, aperçu de fichiers, recherche, plan TODO et journal
+  d'activité ;
+- registre des outils, skills et agents A2A consultable depuis l'interface ;
+- commandes slash, palette `Ctrl/Cmd + K`, arrêt de tâche, nouveau fil et
+  configuration du endpoint, du modèle et du workspace.
+
+Les fichiers de l'interface sont dans `web/`, tandis que `web_server.py` est
+uniquement une couche HTTP/orchestration autour de la logique NEMESIS. Les
+fichiers envoyés depuis le navigateur sont transmis comme contexte au prochain
+message ; aucune donnée n'est uploadée vers un service tiers.

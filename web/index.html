@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090a0f">
+  <title>NEMESIS Web — agent de codage</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <div class="app-shell" id="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand-row">
+        <div class="brand-mark" aria-hidden="true"><span>N</span></div>
+        <div class="brand-copy">
+          <strong>NEMESIS</strong>
+          <span>agent workspace</span>
+        </div>
+        <button class="icon-btn mobile-only" id="close-sidebar" aria-label="Fermer le menu">×</button>
+      </div>
+
+      <button class="new-task-btn" id="new-task">
+        <span class="plus-icon">+</span>
+        <span>Nouvelle tâche</span>
+        <kbd>⌘ K</kbd>
+      </button>
+
+      <nav class="primary-nav" aria-label="Navigation principale">
+        <button class="nav-item active" data-view="workspace"><span class="nav-icon">⌁</span><span>Workspace</span></button>
+        <button class="nav-item" data-view="history"><span class="nav-icon">◷</span><span>Historique</span><span class="nav-count" id="history-count">0</span></button>
+        <button class="nav-item" data-view="agents"><span class="nav-icon">◇</span><span>Agents</span></button>
+        <button class="nav-item" data-view="skills"><span class="nav-icon">✦</span><span>Skills</span></button>
+      </nav>
+
+      <div class="sidebar-section-label">
+        <span>Sessions récentes</span>
+        <button class="tiny-btn" id="clear-recents" title="Effacer la liste">···</button>
+      </div>
+      <div class="recent-list" id="recent-list">
+        <div class="empty-recent">Vos conversations apparaîtront ici.</div>
+      </div>
+
+      <div class="sidebar-bottom">
+        <div class="engine-card" id="engine-card">
+          <span class="status-dot demo"></span>
+          <div><strong id="engine-label">Preview local</strong><small id="engine-detail">moteur prêt</small></div>
+          <button class="tiny-btn" id="engine-settings" aria-label="Configurer le moteur">⚙</button>
+        </div>
+        <button class="nav-item muted" id="open-settings"><span class="nav-icon">⚙</span><span>Paramètres</span><span class="shortcut">⌘ ,</span></button>
+        <div class="sidebar-footer"><span class="footer-shield">◆</span> Workspace isolé</div>
+      </div>
+    </aside>
+
+    <div class="sidebar-scrim" id="sidebar-scrim"></div>
+
+    <main class="main-shell">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="open-sidebar" aria-label="Ouvrir le menu">☰</button>
+        <div class="project-select" id="project-select">
+          <span class="folder-icon">⌂</span>
+          <span class="project-name" id="project-name">nemesis-workspace</span>
+          <span class="chevron">⌄</span>
+        </div>
+        <div class="topbar-divider"></div>
+        <div class="connection-pill" id="connection-pill"><span class="status-dot demo"></span><span id="connection-label">Preview local</span></div>
+        <div class="topbar-spacer"></div>
+        <div class="model-select" id="model-select-wrap">
+          <span class="model-glyph">✦</span>
+          <select id="model-select" aria-label="Modèle"><option value="nemesis-web-demo">Local preview</option></select>
+          <span class="chevron">⌄</span>
+        </div>
+        <button class="icon-btn" id="toggle-inspector" title="Afficher le panneau latéral">▣</button>
+        <button class="icon-btn" id="top-settings" title="Paramètres">⚙</button>
+        <div class="avatar">T</div>
+      </header>
+
+      <div class="workspace-layout">
+        <section class="chat-panel" id="chat-panel">
+          <div class="chat-scroll" id="chat-scroll">
+            <div class="welcome-state" id="welcome-state">
+              <div class="welcome-orbit"><div class="orbit-ring ring-one"></div><div class="orbit-ring ring-two"></div><div class="orbit-core">N</div></div>
+              <div class="eyebrow">NEMESIS WEB</div>
+              <h1>Construisons quelque chose<br><span>de remarquable.</span></h1>
+              <p class="welcome-copy">Votre agent de codage autonome, avec le moteur CLI NEMESIS sous le capot. Décrivez une tâche, inspectez les changements et gardez le contrôle à chaque étape.</p>
+              <div class="quick-prompts">
+                <button class="prompt-card" data-prompt="Liste les fichiers du workspace et résume sa structure"><span class="prompt-card-icon">⌁</span><span><strong>Explorer un projet</strong><small>Comprendre la structure des fichiers</small></span><span class="arrow">↗</span></button>
+                <button class="prompt-card" data-prompt="Lis README.md et donne-moi les points importants"><span class="prompt-card-icon">◫</span><span><strong>Analyser un fichier</strong><small>Lire et expliquer du code existant</small></span><span class="arrow">↗</span></button>
+                <button class="prompt-card" data-prompt="Crée une note de démonstration dans le workspace"><span class="prompt-card-icon">＋</span><span><strong>Modifier le workspace</strong><small>Écrire avec confirmation explicite</small></span><span class="arrow">↗</span></button>
+                <button class="prompt-card" data-prompt="Exécute une commande de démonstration"><span class="prompt-card-icon">›_</span><span><strong>Lancer une commande</strong><small>Voir la sortie dans une carte outil</small></span><span class="arrow">↗</span></button>
+              </div>
+              <div class="welcome-note"><span class="note-icon">⌘</span> <span><strong>Astuce</strong> — utilisez <kbd>/help</kbd> ou <kbd>⌘ K</kbd> pour aller plus vite.</span></div>
+            </div>
+            <div class="message-list" id="message-list"></div>
+            <div class="typing-row hidden" id="typing-row"><span class="typing-mark">N</span><span class="typing-label">NEMESIS réfléchit</span><span class="typing-dots"><i></i><i></i><i></i></span></div>
+          </div>
+
+          <div class="composer-wrap">
+            <div class="slash-menu hidden" id="slash-menu"></div>
+            <div class="composer-box" id="composer-box">
+              <textarea id="composer-input" rows="1" placeholder="Décrivez ce que vous voulez construire…" aria-label="Message à NEMESIS"></textarea>
+              <div class="composer-toolbar">
+                <div class="composer-tools">
+                  <button class="tool-btn" id="attach-btn" title="Ajouter un fichier"><span>＋</span><small>Joindre</small></button>
+                  <button class="tool-btn" id="context-btn" title="Contexte du workspace"><span>⌁</span><small>Contexte</small></button>
+                  <span class="composer-separator"></span>
+                  <button class="mode-chip" id="mode-chip" title="Changer de moteur"><span class="status-dot demo"></span><span id="mode-chip-label">Preview</span><span class="chevron">⌄</span></button>
+                </div>
+                <div class="composer-actions">
+                  <span class="char-count" id="char-count">0 / 8 000</span>
+                  <button class="stop-btn hidden" id="stop-btn" title="Arrêter la tâche">■</button>
+                  <button class="send-btn" id="send-btn" aria-label="Envoyer" title="Envoyer (Entrée)"><span>↑</span></button>
+                </div>
+              </div>
+            </div>
+            <div class="composer-hint"><span>Entrée pour envoyer</span><span>Maj + Entrée pour une nouvelle ligne</span><span class="hint-right">Les actions à risque demandent votre accord</span></div>
+          </div>
+        </section>
+
+        <aside class="inspector" id="inspector">
+          <div class="inspector-header">
+            <div class="inspector-tabs" role="tablist">
+              <button class="inspector-tab active" data-tab="files">Fichiers</button>
+              <button class="inspector-tab" data-tab="plan">Plan <span class="tab-badge" id="plan-count">0</span></button>
+              <button class="inspector-tab" data-tab="activity">Activité</button>
+            </div>
+            <button class="icon-btn" id="close-inspector" title="Fermer le panneau">×</button>
+          </div>
+          <div class="inspector-body">
+            <div class="inspector-pane active" id="pane-files">
+              <div class="pane-toolbar"><div><strong>Workspace</strong><small id="file-summary">Chargement…</small></div><button class="icon-btn refresh-btn" id="refresh-files" title="Actualiser">↻</button></div>
+              <div class="file-search"><span>⌕</span><input id="file-search-input" placeholder="Filtrer les fichiers…"><kbd>/</kbd></div>
+              <div class="tree" id="file-tree"><div class="tree-loading"><span class="mini-spinner"></span> Exploration du workspace…</div></div>
+              <div class="file-preview hidden" id="file-preview">
+                <div class="file-preview-header"><button class="back-files" id="back-files">‹</button><div><strong id="preview-name">fichier</strong><small id="preview-meta"></small></div><button class="icon-btn" id="copy-file" title="Copier">▣</button></div>
+                <pre id="preview-content"></pre>
+              </div>
+            </div>
+            <div class="inspector-pane" id="pane-plan">
+              <div class="pane-toolbar"><div><strong>Plan de travail</strong><small>Suivi par l'agent</small></div><button class="icon-btn refresh-btn" id="refresh-plan" title="Actualiser">↻</button></div>
+              <div class="plan-list" id="plan-list"><div class="empty-pane"><span>☷</span><strong>Aucun plan actif</strong><small>Les tâches créées par NEMESIS apparaîtront ici.</small></div></div>
+            </div>
+            <div class="inspector-pane" id="pane-activity">
+              <div class="pane-toolbar"><div><strong>Activité</strong><small>Événements de la session</small></div><button class="icon-btn refresh-btn" id="clear-activity" title="Vider">⌫</button></div>
+              <div class="activity-list" id="activity-list"><div class="empty-pane"><span>◌</span><strong>En attente d'une tâche</strong><small>Les appels d'outils et résultats seront journalisés ici.</small></div></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <dialog class="settings-dialog" id="settings-dialog">
+    <form method="dialog" class="settings-card" id="settings-form">
+      <div class="dialog-header"><div><span class="eyebrow">CONFIGURATION</span><h2>Paramètres du workspace</h2></div><button class="icon-btn" value="cancel" aria-label="Fermer">×</button></div>
+      <div class="settings-tabs"><button type="button" class="settings-tab active" data-settings-tab="engine">Moteur</button><button type="button" class="settings-tab" data-settings-tab="tools">Outils</button><button type="button" class="settings-tab" data-settings-tab="about">À propos</button></div>
+      <div class="settings-content active" id="settings-engine">
+        <div class="settings-callout"><span class="callout-icon">◉</span><div><strong>Deux modes, un même moteur</strong><p>Le mode Live appelle NEMAPI. Le mode Preview permet de tester l'interface et les outils localement, sans clé ni serveur.</p></div></div>
+        <label class="field-label">Mode d'exécution<select id="settings-mode"><option value="demo">Preview local — sans serveur</option><option value="live">Live — NEMAPI</option></select></label>
+        <div class="field-grid"><label class="field-label">Hôte NEMAPI<input id="settings-host" placeholder="127.0.0.1"></label><label class="field-label">Port<input id="settings-port" type="number" placeholder="8090"></label></div>
+        <label class="field-label">Modèle<input id="settings-model" placeholder="qwen-chat"></label>
+        <label class="field-label">Workspace local<input id="settings-workspace" placeholder="~/nemesis-workspace"></label>
+        <label class="toggle-row"><span><strong>Envoyer le prompt système</strong><small>Initialise les règles et les outils au début d'une session.</small></span><input type="checkbox" id="settings-system-prompt"><span class="toggle-ui"></span></label>
+      </div>
+      <div class="settings-content" id="settings-tools"><div class="settings-section-title">Registre de capacités</div><div class="tool-stat-grid" id="tool-stat-grid"></div><div class="settings-callout subtle"><span class="callout-icon">◆</span><div><strong>Contrôle des actions</strong><p>Les lectures sont directes. Les écritures, commandes et actions à risque attendent une approbation dans le fil de discussion.</p></div></div></div>
+      <div class="settings-content" id="settings-about"><div class="about-lockup"><div class="brand-mark large"><span>N</span></div><div><h3>NEMESIS Web</h3><p>Interface web du moteur NEMESIS-CLI.</p></div></div><div class="about-list"><div><span>Architecture</span><strong>CLI engine + ToolBridge</strong></div><div><span>Transport</span><strong>Events temps réel</strong></div><div><span>Sécurité</span><strong>Workspace isolé · approbations</strong></div></div><a class="repo-link" href="https://github.com/teteekoue/NEMESIS-CLI" target="_blank" rel="noreferrer">Ouvrir le dépôt GitHub ↗</a></div>
+      <div class="dialog-footer"><span class="save-status" id="save-status"></span><button type="button" class="secondary-btn" id="reset-session">Réinitialiser la session</button><button type="submit" class="primary-btn" id="save-settings">Enregistrer</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="resource-dialog" id="resource-dialog">
+    <div class="resource-card">
+      <div class="dialog-header"><div><span class="eyebrow" id="resource-eyebrow">NEMESIS</span><h2 id="resource-title">Ressources</h2></div><button class="icon-btn" id="close-resource" aria-label="Fermer">×</button></div>
+      <div class="resource-list" id="resource-list"></div>
+    </div>
+  </dialog>
+  <div class="command-palette hidden" id="command-palette"><div class="palette-card"><div class="palette-search"><span>⌕</span><input id="palette-input" placeholder="Rechercher une commande…"><kbd>Esc</kbd></div><div class="palette-list" id="palette-list"></div><div class="palette-footer"><span>↑↓ naviguer</span><span>Entrée sélectionner</span><span>Esc fermer</span></div></div></div>
+  <div class="toast-stack" id="toast-stack"></div>
+  <input type="file" id="file-input" hidden multiple>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>
