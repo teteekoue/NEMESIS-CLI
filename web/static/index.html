@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="fr" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NEMESIS Web</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231e1e2e'/><text x='16' y='22' font-size='18' text-anchor='middle' fill='%23cba6f7' font-family='monospace' font-weight='bold'>N</text></svg>" />
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- ───────── Sidebar ───────── -->
+    <aside id="sidebar">
+      <div class="sb-head">
+        <div class="brand">
+          <span class="brand-logo">N</span>
+          <div>
+            <div class="brand-name">NEMESIS</div>
+            <div class="brand-sub">Web · moteur CLI</div>
+          </div>
+        </div>
+        <button id="btn-collapse" class="icon-btn" title="Réduire">‹</button>
+      </div>
+
+      <button id="btn-new" class="primary-btn">＋ Nouvelle conversation</button>
+
+      <div class="sb-section-title">Conversations</div>
+      <div id="session-list" class="session-list"></div>
+
+      <div class="sb-foot">
+        <div id="conn-pill" class="pill neutral"><span class="dot"></span><span class="pill-text">NEMAPI</span></div>
+        <div class="sb-foot-actions">
+          <button id="btn-theme" class="icon-btn" title="Thème">◐</button>
+          <button id="btn-settings" class="icon-btn" title="Paramètres">⚙</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ───────── Main ───────── -->
+    <main id="main">
+      <header id="topbar">
+        <button id="btn-expand" class="icon-btn hidden" title="Afficher la barre latérale">›</button>
+        <div class="topbar-title">
+          <span id="session-title">NEMESIS</span>
+          <span id="session-meta" class="muted"></span>
+        </div>
+        <nav class="tabs">
+          <button class="tab active" data-tab="chat">Conversation</button>
+          <button class="tab" data-tab="trajectory">Trajectoire</button>
+        </nav>
+        <div class="topbar-actions">
+          <button id="btn-panel" class="icon-btn" title="Panneau latéral">▥</button>
+        </div>
+      </header>
+
+      <section id="view-chat" class="view active">
+        <div id="timeline" class="timeline">
+          <div id="empty-state" class="empty">
+            <div class="empty-logo">N</div>
+            <h1>Que voulez-vous que NEMESIS fasse ?</h1>
+            <p>Agent autonome de codage et d'administration système. Les outils sensibles demandent votre autorisation avant exécution.</p>
+            <div class="suggestions">
+              <button class="chip" data-prompt="Explore le workspace et résume la structure du projet.">Explorer le workspace</button>
+              <button class="chip" data-prompt="Liste les fichiers modifiés (git status) et propose un plan de travail dans la todo.">Plan de travail git</button>
+              <button class="chip" data-prompt="Écris un script Python hello.py qui affiche la date du jour, puis exécute-le.">Créer et exécuter un script</button>
+              <button class="chip" data-prompt="/help">/help</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="composer-wrap">
+          <div id="pending-bar" class="pending-bar hidden"></div>
+          <div id="composer">
+            <div class="composer-row">
+              <textarea id="input" rows="1" placeholder="Envoyer un message à l'agent… (/ pour les commandes, Shift+Entrée = nouvelle ligne)"></textarea>
+            </div>
+            <div class="composer-row bottom">
+              <div class="left">
+                <div class="dropdown" id="dd-access">
+                  <button class="dd-btn" id="access-btn">🛡 <span id="access-label">Demander</span> ▾</button>
+                  <div class="dd-menu" id="access-menu"></div>
+                </div>
+                <div class="dropdown" id="dd-model">
+                  <button class="dd-btn" id="model-btn">◇ <span id="model-label">modèle</span> ▾</button>
+                  <div class="dd-menu" id="model-menu"><div class="dd-item muted">Chargement…</div></div>
+                </div>
+                <label class="toggle" title="Envoyer le prompt système au premier message (nouvelle session NEMAPI)">
+                  <input type="checkbox" id="sysprompt-toggle" checked /> <span>Prompt système</span>
+                </label>
+              </div>
+              <div class="right">
+                <span id="thinking" class="thinking hidden"><span class="spinner"></span><span class="thinking-text">réflexion…</span></span>
+                <button id="btn-stop" class="stop-btn hidden" title="Interrompre">■</button>
+                <button id="btn-send" class="send-btn" title="Envoyer (Entrée)">↑</button>
+              </div>
+            </div>
+            <div id="slash-menu" class="slash-menu hidden"></div>
+          </div>
+          <div id="statusbar" class="statusbar">
+            <span id="st-turns">0 tour</span> · <span id="st-tools">0 outil</span> · <span id="st-llm">LLM 0s</span> · <span id="st-model"></span> · <span id="st-ws" class="ellipsis"></span>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-trajectory" class="view">
+        <div class="traj-toolbar">
+          <span class="muted">Journal brut des événements du moteur</span>
+          <label class="toggle"><input type="checkbox" id="traj-filter-system" checked /> <span>système</span></label>
+          <label class="toggle"><input type="checkbox" id="traj-filter-tools" checked /> <span>outils</span></label>
+          <button id="btn-export" class="ghost-btn">Exporter JSON</button>
+        </div>
+        <div id="trajectory" class="trajectory"></div>
+      </section>
+    </main>
+
+    <!-- ───────── Right panel ───────── -->
+    <aside id="panel" class="hidden">
+      <div class="panel-tabs">
+        <button class="ptab active" data-ptab="todo">Todo</button>
+        <button class="ptab" data-ptab="files">Workspace</button>
+        <button class="ptab" data-ptab="outputs">Sorties</button>
+        <button class="ptab" data-ptab="stats">Stats</button>
+      </div>
+      <div class="panel-body">
+        <div id="ptab-todo" class="pview active">
+          <div class="pview-head"><span>Plan de travail</span><button class="ghost-btn" id="btn-todo-refresh">↻</button></div>
+          <div id="todo-list" class="todo-list"><div class="muted small">Aucune tâche.</div></div>
+        </div>
+        <div id="ptab-files" class="pview">
+          <div class="pview-head"><span id="files-crumb" class="ellipsis">/</span><button class="ghost-btn" id="btn-files-refresh">↻</button></div>
+          <div id="file-list" class="file-list"></div>
+          <div id="file-view" class="file-view hidden">
+            <div class="file-view-head"><span id="file-view-name" class="ellipsis"></span><button class="ghost-btn" id="btn-file-close">✕</button></div>
+            <pre id="file-view-content"></pre>
+          </div>
+        </div>
+        <div id="ptab-outputs" class="pview">
+          <div class="pview-head"><span>Sorties bash</span><button class="ghost-btn" id="btn-outputs-refresh">↻</button></div>
+          <div id="outputs-list"></div>
+        </div>
+        <div id="ptab-stats" class="pview">
+          <div class="pview-head"><span>Session</span></div>
+          <dl id="stats-list" class="kv"></dl>
+          <div class="pview-head"><span>Git</span><button class="ghost-btn" id="btn-git-refresh">↻</button></div>
+          <pre id="git-info" class="small"></pre>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ───────── Settings modal ───────── -->
+  <div id="modal-settings" class="modal hidden">
+    <div class="modal-card wide">
+      <div class="modal-head">
+        <h2>Paramètres</h2>
+        <button class="icon-btn" data-close="modal-settings">✕</button>
+      </div>
+      <div class="modal-tabs">
+        <button class="mtab active" data-mtab="nemapi">NEMAPI</button>
+        <button class="mtab" data-mtab="tools">Outils</button>
+        <button class="mtab" data-mtab="mcp">MCP</button>
+        <button class="mtab" data-mtab="skills">Skills & Agents</button>
+        <button class="mtab" data-mtab="prompt">Prompt système</button>
+        <button class="mtab" data-mtab="commands">Commandes</button>
+      </div>
+      <div class="modal-body">
+        <div id="mtab-nemapi" class="mview active">
+          <div class="form-grid">
+            <label>Hôte<input id="cfg-host" placeholder="127.0.0.1" /></label>
+            <label>Port<input id="cfg-port" type="number" placeholder="8090" /></label>
+            <label>Modèle<input id="cfg-model" placeholder="qwen-chat" /></label>
+            <label>Timeout (s)<input id="cfg-timeout" type="number" placeholder="180" /></label>
+            <label class="span2">Workspace<input id="cfg-workspace" placeholder="~/nemesis-workspace" /></label>
+          </div>
+          <div class="row gap">
+            <button id="btn-cfg-test" class="ghost-btn">Tester la connexion</button>
+            <button id="btn-cfg-save" class="primary-btn small">Enregistrer</button>
+            <span id="cfg-status" class="muted small"></span>
+          </div>
+          <p class="muted small">La configuration est celle de la CLI (<code id="cfg-dir"></code>). Les sessions actives sont reconfigurées à chaud.</p>
+        </div>
+        <div id="mtab-tools" class="mview"><div id="tools-list" class="tools-grid"></div></div>
+        <div id="mtab-mcp" class="mview">
+          <div id="mcp-list"></div>
+          <div class="form-grid">
+            <label>Nom<input id="mcp-name" placeholder="calculator" /></label>
+            <label>Commande<input id="mcp-cmd" placeholder="python3 mcp_calculator.py" /></label>
+            <label class="span2">Description<input id="mcp-desc" /></label>
+          </div>
+          <button id="btn-mcp-add" class="primary-btn small">Ajouter le serveur</button>
+          <span id="mcp-status" class="muted small"></span>
+        </div>
+        <div id="mtab-skills" class="mview">
+          <h3>Skills installées</h3>
+          <div id="skills-list"></div>
+          <h3>Agents A2A</h3>
+          <div id="agents-list"></div>
+        </div>
+        <div id="mtab-prompt" class="mview"><pre id="sysprompt-view" class="small"></pre></div>
+        <div id="mtab-commands" class="mview"><div id="commands-list"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── New session modal ───────── -->
+  <div id="modal-new" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head"><h2>Nouvelle conversation</h2><button class="icon-btn" data-close="modal-new">✕</button></div>
+      <div class="modal-body">
+        <label class="block">Titre (optionnel)<input id="new-title" placeholder="Ex. Refactoring du module auth" /></label>
+        <label class="block">Mode d'accès
+          <select id="new-access">
+            <option value="ask">Demander avant chaque outil sensible</option>
+            <option value="full">Accès complet (sans confirmation)</option>
+            <option value="readonly">Lecture seule</option>
+          </select>
+        </label>
+        <label class="toggle block"><input type="checkbox" id="new-sysprompt" checked /> <span>Envoyer le prompt système au premier message (nouvelle session NEMAPI). Décochez pour conserver la session NEMAPI existante.</span></label>
+        <div class="row end gap">
+          <button class="ghost-btn" data-close="modal-new">Annuler</button>
+          <button id="btn-new-confirm" class="primary-btn small">Créer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+
+  <script src="/static/vendor/marked.min.js"></script>
+  <script src="/static/vendor/purify.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

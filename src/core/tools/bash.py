@@ -7,6 +7,7 @@ import uuid
 import re
 import threading
 import sys
+import io
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List, Generator
 
@@ -14,6 +15,17 @@ from typing import Optional, Dict, Any, List, Generator
 _ACTIVE_PROCESSES: Dict[str, subprocess.Popen] = {}
 _PROCESS_OUTPUT: Dict[str, bytes] = {}
 _PROCESS_LOCK = threading.Lock()
+
+
+def _inherited_stdin():
+    """Return a stdin usable by subprocess: the real TTY when available,
+    otherwise DEVNULL (web server, tests, daemons without a console)."""
+    try:
+        if sys.stdin is not None and sys.stdin.fileno() >= 0:
+            return sys.stdin
+    except (ValueError, OSError, AttributeError, io.UnsupportedOperation):
+        pass
+    return subprocess.DEVNULL
 
 
 @dataclass
@@ -134,7 +146,7 @@ def _run_foreground(cmd: str, workdir: str, timeout_ms: int) -> BashOutput:
             actual_cmd,
             shell=True,
             cwd=workdir,
-            stdin=sys.stdin,
+            stdin=_inherited_stdin(),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             preexec_fn=os.setsid if os.name != "nt" else None,
@@ -203,7 +215,7 @@ def _run_background(cmd: str, workdir: str, description: str) -> BashOutput:
             actual_cmd,
             shell=True,
             cwd=workdir,
-            stdin=sys.stdin,
+            stdin=_inherited_stdin(),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             preexec_fn=os.setsid if os.name != "nt" else None,
@@ -351,7 +363,7 @@ def run_bash_streamed(
             actual_cmd,
             shell=True,
             cwd=workdir,
-            stdin=sys.stdin,
+            stdin=_inherited_stdin(),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             bufsize=0,  # unbuffered: readline() streams line by line

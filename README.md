@@ -269,7 +269,26 @@ servers:
 ./venv/bin/python3 agent.py --debug
 ```
 
-### Interface Utilisateur
+### Interface Web
+
+Une interface web (inspirée de DeepSeek Harness) utilise **le même moteur** que
+la CLI — boucle d'agent, autorisations `y / n / a`, parseur, outils, commandes
+slash, MCP, skills, A2A :
+
+```bash
+./nemesis-web                 # http://localhost:3080  (ou: python -m web.server)
+python -m web.mock_nemapi     # optionnel : faux NEMAPI scripté pour tester l'UI sans LLM
+```
+
+Fonctionnalités : conversations multiples persistées, timeline avec appels
+d'outils repliables (paramètres, sortie, diff), cartes d'autorisation, modes
+d'accès (*Demander / Accès complet / Lecture seule*), sélecteur de modèle
+(`/v1/models`), autocomplétion `/`, onglet Trajectoire (journal brut
+exportable), panneau Todo / Workspace / Sorties bash / Stats, paramètres
+NEMAPI · MCP · Outils · Skills & Agents · Prompt système. Détails dans
+[`web/README.md`](web/README.md).
+
+### Interface Utilisateur (terminal)
 
 NEMESIS propose une interface terminal moderne avec :
 - **Affichage coloré** grâce à Rich
