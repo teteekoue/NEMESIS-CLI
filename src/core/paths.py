@@ -7,8 +7,13 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-# Package / install root (directory containing agent.py)
-INSTALL_DIR = Path(__file__).resolve().parent.parent.parent
+import sys
+
+# Package / install root (directory containing agent.py or sys._MEIPASS when frozen)
+if getattr(sys, "frozen", False):
+    INSTALL_DIR = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+else:
+    INSTALL_DIR = Path(__file__).resolve().parent.parent.parent
 
 # User-writable config & state
 USER_CONFIG_DIR = Path(
@@ -27,6 +32,19 @@ PROMPT_NAME = "prompt_system.txt"
 TOOLS_LIBRARY_NAME = "tools_library"
 
 
+def _find_resource(name: str) -> Optional[Path]:
+    for base in (
+        INSTALL_DIR,
+        Path(sys.prefix),
+        Path(sys.prefix) / "data",
+        Path.cwd(),
+    ):
+        cand = base / name
+        if cand.exists():
+            return cand
+    return None
+
+
 def ensure_user_dirs() -> Path:
     """Create user config directory and seed defaults from install if missing."""
     USER_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -34,8 +52,8 @@ def ensure_user_dirs() -> Path:
     _seed_if_missing(MCP_CONFIG_NAME)
     # tools_library: seed empty structure or copy bundled skills
     user_lib = USER_CONFIG_DIR / TOOLS_LIBRARY_NAME
-    install_lib = INSTALL_DIR / TOOLS_LIBRARY_NAME
-    if not user_lib.exists() and install_lib.is_dir():
+    install_lib = _find_resource(TOOLS_LIBRARY_NAME)
+    if not user_lib.exists() and install_lib and install_lib.is_dir():
         try:
             shutil.copytree(install_lib, user_lib)
         except OSError:
@@ -49,8 +67,8 @@ def _seed_if_missing(name: str) -> None:
     dest = USER_CONFIG_DIR / name
     if dest.exists():
         return
-    src = INSTALL_DIR / name
-    if src.is_file():
+    src = _find_resource(name)
+    if src and src.is_file():
         try:
             shutil.copy2(src, dest)
         except OSError:
@@ -67,8 +85,8 @@ def mcp_config_path() -> Path:
     user = USER_CONFIG_DIR / MCP_CONFIG_NAME
     if user.exists():
         return user
-    install = INSTALL_DIR / MCP_CONFIG_NAME
-    return install if install.exists() else user
+    install = _find_resource(MCP_CONFIG_NAME)
+    return install if install and install.exists() else user
 
 
 def agents_path() -> Path:
@@ -79,11 +97,11 @@ def agents_path() -> Path:
 def prompt_system_path() -> Path:
     """Prefer install prompt (read-only package data), fallback to cwd/user."""
     for candidate in (
-        INSTALL_DIR / PROMPT_NAME,
+        _find_resource(PROMPT_NAME),
         USER_CONFIG_DIR / PROMPT_NAME,
         Path.cwd() / PROMPT_NAME,
     ):
-        if candidate.is_file():
+        if candidate and candidate.is_file():
             return candidate
     return INSTALL_DIR / PROMPT_NAME
 

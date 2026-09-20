@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nemesis-cli"
+version = "2.0.0"
+description = "Autonomous coding and system engineering agent CLI"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "TEJF - L'Aigle de la Justice"}
+]
+dependencies = [
+    "openai>=1.0.0",
+    "pyyaml>=6.0",
+    "rich>=13.0.0",
+    "requests>=2.28.0",
+    "prompt_toolkit>=3.0.0",
+    "jinja2>=3.0.0",
+    "ddgs>=9.0.0",
+    "markdownify>=0.11.0",
+    "python-telegram-bot>=20.0"
+]
+
+[project.scripts]
+nemesis = "agent:main"
+nemesis-cli = "cli:main"
+nemesis-bot = "telegram_bot:main"
+
+[tool.setuptools]
+py-modules = [
+    "agent",
+    "cli",
+    "telegram_bot",
+    "action_parser",
+    "tools",
+    "tools_schema",
+    "uploader",
+    "mcp_calculator",
+    "bridge_client"
+]
+packages = [
+    "src",
+    "src.ui",
+    "src.core",
+    "src.core.tools",
+    "providers"
+]
+
+[tool.setuptools.package-data]
+"*" = [
+    "*.txt",
+    "*.yaml",
+    "*.json",
+    "tools_library/**/*",
+    "VIBE_UI_LICENSE.txt"
+]
+
+[tool.setuptools.data-files]
+"." = [
+    "prompt_system.txt",
+    "prompt_system_telegram.txt",
+    "config.yaml",
+    "mcp_config.yaml",
+    "agents.json"
+]
+"tools_library/unit-converter" = [
+    "tools_library/unit-converter/SKILL.md"
+]

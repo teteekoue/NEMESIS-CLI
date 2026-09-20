@@ -1,0 +1,9 @@
+include prompt_system.txt
+include prompt_system_telegram.txt
+include config.yaml
+include mcp_config.yaml
+include agents.json
+include src/ui/VIBE_UI_LICENSE.txt
+recursive-include tools_library *
+recursive-include src *
+recursive-include providers *

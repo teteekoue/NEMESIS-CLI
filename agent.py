@@ -195,6 +195,14 @@ class NemesisApp:
             self.last_interrupt = now
             self.console.print("\n[yellow] Tâche interrompue. Tapez Ctrl+C encore pour forcer la fermeture.[/yellow]")
 
+    def _consume_input_interrupt(self) -> bool:
+        """Consume an interrupt captured by a custom composer key binding."""
+        if not getattr(self.composer, "interrupt_requested", False):
+            return False
+        self.composer.interrupt_requested = False
+        self._handle_interrupt()
+        return True
+
     def _parse_response(self, resp: str) -> Dict:
         """Parse une réponse LLM via le parseur multi-niveaux (ActionParser).
 
@@ -220,6 +228,8 @@ class NemesisApp:
         while True:
             try:
                 choice = self.composer.prompt_input(title=self.composer.AUTH_TITLE if hasattr(self.composer, "AUTH_TITLE") else "authorization [y/n/a]")
+                if self._consume_input_interrupt():
+                    return False
                 if choice:
                     choice = choice.strip().lower()
                     if choice in ("y", "yes"):
@@ -263,6 +273,8 @@ class NemesisApp:
                 choice = self.composer.prompt_input(
                     title="prompt système [o / n]"
                 )
+                if self._consume_input_interrupt():
+                    return
             except (EOFError, KeyboardInterrupt):
                 choice = None
 
@@ -403,6 +415,8 @@ class NemesisApp:
                         self.console.print("[yellow]La commande attend une entrée utilisateur.[/yellow]")
                         try:
                             user_input = self.composer.prompt_input("[yellow]>>>[/yellow] ")
+                            if self._consume_input_interrupt():
+                                break
                             waiting = getattr(self.executor, "_waiting_for_input", None)
                             if user_input and waiting and getattr(waiting, "stdin", None):
                                 waiting.stdin.write(user_input + "\n")
@@ -524,6 +538,9 @@ class NemesisApp:
                     self._handle_interrupt()
                     continue
 
+                if self._consume_input_interrupt():
+                    continue
+
                 if not user_input:
                     continue
 
@@ -546,7 +563,11 @@ class NemesisApp:
                             "[dim]Utilisez /help pour voir les commandes disponibles.[/dim]"
                         )
                 else:
-                    self._process_cycle(user_input)
+                    try:
+                        self._process_cycle(user_input)
+                    except KeyboardInterrupt:
+                        self._handle_interrupt()
+                        continue
 
         except KeyboardInterrupt:
             elapsed = time.time() - self.session_start
@@ -555,7 +576,13 @@ class NemesisApp:
             self.console.print("[system]Au revoir ![/system]")
 
 
-if __name__ == "__main__":
-    debug_mode = "--debug" in sys.argv
+def main(argv: Optional[List[str]] = None) -> int:
+    args = argv if argv is not None else sys.argv[1:]
+    debug_mode = "--debug" in args
     app = NemesisApp(debug=debug_mode)
     app.run()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

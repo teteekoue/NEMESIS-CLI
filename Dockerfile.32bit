@@ -1,0 +1,35 @@
+# Dockerfile pour compilation 32-bit (ARMv7 / i686) pour Termux et Linux 32-bit
+ARG BASE_IMAGE=python:3.11-slim
+FROM ${BASE_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+# Installation des outils de build 32-bit
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    binutils \
+    gcc \
+    g++ \
+    make \
+    zlib1g-dev \
+    libyaml-dev \
+    libffi-dev \
+    git \
+    patchelf \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PYI_STATIC_ZLIB=1
+
+WORKDIR /app
+
+# Mise a niveau de pip, setuptools et wheel
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel build
+
+# Copie du projet
+COPY . /app/
+
+# Script d'entree pour compilation
+RUN chmod +x /app/build_binaries.sh || true
+
+CMD ["bash"]

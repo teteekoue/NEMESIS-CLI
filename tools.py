@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Module d'execution d'outils pour l'agent CLI - Version 2.0 (JSON Function Calling)"""
-import os, subprocess, sys, json, signal, time, re, builtins
+import os, subprocess, sys, json, signal, time, re, builtins, shutil
+try:
+    import termios
+except ImportError:
+    termios = None
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Generator
@@ -482,7 +486,6 @@ class ActionExecutor:
                 
                 # Configurer le descripteur de fichier maître pour la lecture non-bloquante
                 import fcntl
-                import termios
                 fcntl.fcntl(master_fd, fcntl.F_SETFL, fcntl.fcntl(master_fd, fcntl.F_GETFL) | os.O_NONBLOCK)
                 
                 # Stocker le processus et le fd pour l'accès depuis agent.py

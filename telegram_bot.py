@@ -19,8 +19,10 @@ import time
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 
-# Ajouter le repertoire parent au path pour les imports
-script_dir = Path(__file__).resolve().parent
+if getattr(sys, "frozen", False):
+    script_dir = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+else:
+    script_dir = Path(__file__).resolve().parent
 sys.path.insert(0, str(script_dir))
 
 from telegram import Update, Message, Bot, InlineKeyboardButton, InlineKeyboardMarkup

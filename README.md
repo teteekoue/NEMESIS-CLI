@@ -37,6 +37,7 @@ Développé par **TEJF - L'Aigle de la Justice**
 - Gestion de processus et tâches en arrière-plan
 - Support du **Model Context Protocol (MCP)**
 - Interface terminal moderne avec **Rich** et **prompt_toolkit**
+- Interface coding-agent alternative et compacte (`cli.py`)
 - Conservation du contexte côté serveur NEMAPI
 - Gestion interactive des commandes nécessitant des entrées utilisateur
 
@@ -93,6 +94,7 @@ risque exposés au CLI, à Telegram et aux sous-agents.
 ```
 nemesis-cli/
 ├── agent.py                 # Point d'entrée principal
+├── cli.py                   # Lanceur de l'interface coding-agent alternative
 ├── action_parser.py         # Parseur multi-niveaux des réponses IA
 ├── tools.py                 # Exécuteur d'outils principal
 ├── tools_schema.py          # Schéma centralisé des outils disponibles
@@ -155,7 +157,15 @@ click>=8.0.0
 
 ## Installation
 
-### Méthode 1 : Installation Standard
+### Méthode 1 : Installation sur Android / Termux (32 bits)
+
+L'installation via Pip standard échouera sur les systèmes Termux ARMv7 car certaines dépendances natives ne sont pas pré-compilées.
+Nous avons préparé un pack tout-en-un pour Termux.
+
+👉 **Veuillez consulter le [Guide d'installation pour Termux (ARMv7)](TERMUX_INSTALL.md)** pour une installation simple et automatisée.
+
+### Méthode 2 : Installation Standard (Linux/Mac/PC)
+
 
 ```bash
 # 1. Cloner le dépôt
@@ -174,6 +184,53 @@ pip install -r requirements.txt
 # 5. Lancer NEMESIS
 ./venv/bin/python3 agent.py
 ```
+
+### Interface coding-agent alternative
+
+`cli.py` utilise exactement le même moteur, les mêmes outils et les mêmes
+commandes que `agent.py`, mais avec une présentation plus adaptée au travail
+de développement : conversation en flux, appels d'outils séparés des
+résultats, sorties de commandes visibles et confirmations compactes.
+
+```bash
+./venv/bin/python3 cli.py
+# ou avec les diagnostics du moteur
+./venv/bin/python3 cli.py --debug
+```
+
+Cette interface est volontairement parallèle afin de pouvoir être évaluée
+sans modifier l'interface historique lancée par `agent.py`.
+
+L’interface expérimentale reprend les conventions d’affichage de Mistral Vibe
+(composer persistant, transcript compact, cartes d’outils, todo et fermeture
+à double `Ctrl+C`). Les primitives adaptées sont isolées dans
+`src/ui/vibe_style.py` et accompagnées de leur notice Apache-2.0.
+
+### Aperçu local avec le moteur NEMAPI fictif
+
+Pour tester l'interface sans serveur NEMAPI, lancez :
+
+```bash
+python cli.py --mock
+```
+
+Le moteur fictif répond avec des appels JSON et exécute les vrais handlers de
+l'agent. Dans la session, répondez `n` à la question du prompt système, puis
+utilisez l'une de ces demandes exactes :
+
+| Demande à saisir | Ce qui est affiché |
+|---|---|
+| `lis un fichier` | Appel `read_file` et aperçu du résultat |
+| `lance une commande bash` | Appel Bash, sortie et statut de réussite |
+| `fais une modification` | Demande d'autorisation puis appel `write` |
+| `montre une erreur` | Sortie stderr et statut d'échec |
+| `affiche un plan` | Carte de plan avec états pending/in_progress/completed |
+| `teste tous les outils` | Deux appels Bash groupés et leurs résultats |
+
+Pour les scénarios Bash, écrivez `y` quand l'interface demande
+`Allow ... [y] once [a] always [n] deny`. Pour le scénario d'écriture,
+`y` autorise également la création de `mock-ui-demo.txt` dans le workspace
+configuré. Ce fichier peut être supprimé après le test.
 
 ### Méthode 2 : Installation Rapide
 
