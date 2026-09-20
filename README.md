@@ -233,6 +233,11 @@ laisser `model` vide pour utiliser le premier modèle retourné. NEMESIS envoie
 uniquement le message courant : l'historique et le contexte du prompt système
 sont conservés par NEMAPI.
 
+Au démarrage, NEMESIS demande si le prompt système doit être renvoyé. Répondez
+`n` ou appuyez sur Entrée (valeur par défaut) pour poursuivre une session
+NEMAPI existante en envoyant uniquement le message utilisateur. Répondez `o`
+pour envoyer le prompt système une seule fois avant le premier message.
+
 ### Fichier `mcp_config.yaml`
 
 Configuration spécifique pour le Model Context Protocol :

@@ -51,6 +51,7 @@ class NemesisApp:
         self.session_start = 0.0
         self._conn_ok = None
         self._prompt_sent = False
+        self._send_system_prompt = False
         # Système d'autorisation pour les outils
         self._authorized_tools = set()  # Outils autorisés pour cette session (mode 'a')
         self._last_auth_choice = None  # Dernier choix d'autorisation
@@ -251,6 +252,30 @@ class NemesisApp:
         
         return f"FEEDBACK:\nTool: {tool_name}\nSucces: {success}\nOutput:\n{output}"
 
+    def _ask_system_prompt(self) -> None:
+        """Ask whether the system prompt should initialize the NEMAPI session."""
+        self.console.print(
+            "[yellow]Envoyer le prompt système au prochain message ? "
+            "[o/N] (N conserve la session NEMAPI existante)[/yellow]"
+        )
+        while True:
+            try:
+                choice = self.composer.prompt_input(
+                    title="prompt système [o / n]"
+                )
+            except (EOFError, KeyboardInterrupt):
+                choice = None
+
+            normalized = (choice or "").strip().lower()
+            if not normalized or normalized in {"n", "non", "no"}:
+                self._send_system_prompt = False
+                self._prompt_sent = True
+                return
+            if normalized in {"o", "oui", "y", "yes"}:
+                self._send_system_prompt = True
+                return
+            self.console.print("[dim]Répondez par o (oui) ou n (non).[/dim]")
+
     def _process_cycle(self, message: str):
         from src.core.default_commands import increment_message_count
         
@@ -266,7 +291,7 @@ class NemesisApp:
             return
 
         # Envoi du prompt systeme au premier message (une seule fois par session)
-        if not self._prompt_sent:
+        if self._send_system_prompt and not self._prompt_sent:
             prompt = self.executor.get_system_prompt() if hasattr(self.executor, "get_system_prompt") else ""
             if prompt:
                 try:
@@ -485,6 +510,8 @@ class NemesisApp:
             workspace=workspace,
             connected=None,
         )
+
+        self._ask_system_prompt()
 
         # Ne pas tester la connexion au demarrage — le faire au premier message
         self._conn_ok = None

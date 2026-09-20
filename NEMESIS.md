@@ -38,7 +38,9 @@ Le système de subagents utilise le protocole A2A (Agent-to-Agent) pour la dél�
 ## État technique
 
 - Les réponses JSON et SSE de NEMAPI sont normalisées par le provider.
-- Le prompt système est envoyé une seule fois au début de la session.
+- Au démarrage, NEMESIS demande si le prompt système doit être envoyé. La
+  réponse par défaut est non afin de poursuivre une session déjà gérée par
+  NEMAPI ; en répondant `o`, il est envoyé une seule fois au premier message.
 - Les appels d'outils sont exécutés par le bridge partagé, pour l'agent
   principal comme pour les sous-agents.
 - Le contexte conversationnel reste côté serveur NEMAPI ; aucun historique
