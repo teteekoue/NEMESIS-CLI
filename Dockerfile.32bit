@@ -1,5 +1,5 @@
 # Dockerfile pour compilation 32-bit (ARMv7 / i686) pour Termux et Linux 32-bit
-ARG BASE_IMAGE=python:3.11-slim
+ARG BASE_IMAGE=python:3.14-slim
 FROM ${BASE_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive
