@@ -53,7 +53,6 @@ echo "=== Installation de NEMESIS CLI sur Termux 32-bit ==="
 pkg update -y
 pkg install -y python python-pip libyaml
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-pip install --upgrade pip
 pip install --no-index --find-links="$DIR/wheels" nemesis-cli
 echo ""
 echo "[✓] Succes ! Lancez 'nemesis' ou 'nemesis-cli'"
