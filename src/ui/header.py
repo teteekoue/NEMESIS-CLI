@@ -1,13 +1,12 @@
 """Branding and session header for the NEMESIS-CLI terminal UI."""
 
-from __future__ import annotations
-
 from rich.align import Align
 from rich.console import Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from rich import box
+from typing import Optional
 
 from .theme import Catppuccin
 
@@ -26,12 +25,12 @@ def _value(value: object, fallback: str = "—") -> str:
 
 
 def get_header(
-    version: str | None = None,
+    version: Optional[str] = None,
     provider: str = "",
     target: str = "",
     model: str = "",
     workspace: str = "",
-    connected: bool | None = None,
+    connected: Optional[bool] = None,
 ):
     """Render the product banner and the most useful session parameters.
 

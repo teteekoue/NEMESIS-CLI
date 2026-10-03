@@ -1,5 +1,8 @@
 import urllib.request
 import urllib.error
+import urllib.parse
+import ipaddress
+import socket
 from dataclasses import dataclass
 from typing import Optional
 
@@ -23,6 +26,35 @@ DESCRIPTION_FULL = """Fetch content from a URL.
 - Use format=text for plain text, format=html for raw HTML.
 - HTTP URLs are upgraded to HTTPS."""
 
+_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+
+
+def _is_public_https_url(url: str) -> Optional[str]:
+    """Return an error for non-public HTTPS destinations, else ``None``.
+
+    Fetching is an agent capability, so it must not become a route to loopback,
+    private networks, or cloud metadata services.
+    """
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        return "URL must start with https:// and include a hostname."
+    try:
+        addresses = socket.getaddrinfo(parsed.hostname, parsed.port or 443, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        return "Cannot resolve host: {0}".format(exc)
+    for address in addresses:
+        ip = ipaddress.ip_address(address[4][0])
+        if not ip.is_global:
+            return "Private, loopback, or reserved network addresses are not allowed."
+    return None
+
+
+class _NoRedirects(urllib.request.HTTPRedirectHandler):
+    """Avoid redirect-based SSRF; callers must fetch the final HTTPS URL directly."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
 
 def web_fetch(input: WebFetchInput) -> WebFetchResult:
     url = input.url.strip()
@@ -32,8 +64,9 @@ def web_fetch(input: WebFetchInput) -> WebFetchResult:
     if url.startswith("http://"):
         url = "https://" + url[7:]
 
-    if not url.startswith("https://"):
-        return WebFetchResult(success=False, error="URL must start with https://")
+    url_error = _is_public_https_url(url)
+    if url_error:
+        return WebFetchResult(success=False, error=url_error)
 
     req = urllib.request.Request(
         url,
@@ -44,9 +77,23 @@ def web_fetch(input: WebFetchInput) -> WebFetchResult:
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        opener = urllib.request.build_opener(_NoRedirects())
+        with opener.open(req, timeout=15) as resp:
             content_type = resp.headers.get("Content-Type", "")
-            raw = resp.read()
+            declared_size = resp.headers.get("Content-Length")
+            if declared_size and int(declared_size) > _MAX_RESPONSE_BYTES:
+                return WebFetchResult(success=False, error="Response exceeds the 2 MiB fetch limit.")
+            chunks = []
+            total = 0
+            while True:
+                chunk = resp.read(64 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > _MAX_RESPONSE_BYTES:
+                    return WebFetchResult(success=False, error="Response exceeds the 2 MiB fetch limit.")
+                chunks.append(chunk)
+            raw = b"".join(chunks)
     except urllib.error.URLError as e:
         return WebFetchResult(success=False, error=f"Fetch failed: {e}")
     except Exception as e:

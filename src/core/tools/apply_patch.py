@@ -27,6 +27,19 @@ DESCRIPTION_FULL = """Apply a unified diff (patch) to the workspace.
 - Paths inside the patch are resolved relative to the workspace."""
 
 
+def _validate_patch_paths(patch_text: str, workspace_dir: str) -> Optional[str]:
+    """Ensure every file referenced by a unified diff remains in the workspace."""
+    for raw in re.findall(r"^(?:---|\+\+\+)\s+(?:a/|b/)?(.+)$", patch_text, re.M):
+        path = raw.strip().split("\t", 1)[0]
+        if path == "/dev/null":
+            continue
+        resolved = os.path.realpath(os.path.join(workspace_dir, path))
+        root = os.path.realpath(workspace_dir)
+        if resolved != root and not resolved.startswith(root + os.sep):
+            return "Patch path escapes the workspace: {0}".format(path)
+    return None
+
+
 def apply_patch(patch: str, workspace_dir: str, dry_run: bool = False) -> ApplyPatchResult:
     if not patch or not patch.strip():
         return ApplyPatchResult(success=False, message="patch content is empty")
@@ -35,6 +48,10 @@ def apply_patch(patch: str, workspace_dir: str, dry_run: bool = False) -> ApplyP
     patch_text = patch.replace("\r\n", "\n")
     if not patch_text.endswith("\n"):
         patch_text += "\n"
+
+    path_error = _validate_patch_paths(patch_text, workspace_dir)
+    if path_error:
+        return ApplyPatchResult(success=False, message=path_error)
 
     # Detect files mentioned in the patch
     files = re.findall(r"^\+\+\+\s+(?:b/)?(.+)$", patch_text, re.M)

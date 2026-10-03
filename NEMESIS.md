@@ -81,6 +81,9 @@ que l'agent principal. Aucun token de fournisseur n'est requis par NEMESIS.
 | `/delegate <agent> <instruction>` | Délègue une tâche |
 | `/tools` | Liste des outils disponibles |
 | `/show` | Affiche les sorties cachées |
+| `/doctor` | Vérifie la configuration locale et NemApi |
+| `/workspace` | Affiche le workspace actif |
+| `/reset` | Réinitialise explicitement le contexte NemApi |
 
 ## État actuel
 
@@ -92,7 +95,7 @@ que l'agent principal. Aucun token de fournisseur n'est requis par NEMESIS.
 
 ## Notes de développement
 
-- Le projet utilise Python 3.12+
+- Le projet utilise Python 3.9+
 - L'interface utilisateur utilise la bibliothèque `rich`
 - Le protocole A2A est basé sur JSON
 - Les subagents sont configurés via `agents.json`

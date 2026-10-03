@@ -5,7 +5,7 @@ Ce module definit la structure JSON attendue pour chaque outil,
 remplacant l'ancien systeme de parsing XML <ACTION>.
 """
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional, Tuple
 
 # ============================================================
 # DEFINITION DES OUTILS
@@ -276,7 +276,7 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
 # FONCTIONS UTILITAIRES
 # ============================================================
 
-def get_tool_by_name(name: str) -> Dict[str, Any] | None:
+def get_tool_by_name(name: str) -> Optional[Dict[str, Any]]:
     """Retourne la definition d'un outil par son nom."""
     for tool in TOOLS_SCHEMA:
         if tool["name"] == name:
@@ -287,12 +287,12 @@ def get_all_tool_names() -> List[str]:
     """Retourne la liste de tous les noms d'outils disponibles."""
     return [t["name"] for t in TOOLS_SCHEMA]
 
-def get_tool_handler_method(name: str) -> str | None:
+def get_tool_handler_method(name: str) -> Optional[str]:
     """Retourne le nom de la methode handler pour un outil donne."""
     tool = get_tool_by_name(name)
     return tool["handler_method"] if tool else None
 
-def validate_tool_call(tool_name: str, parameters: Dict[str, Any]) -> tuple[bool, str]:
+def validate_tool_call(tool_name: str, parameters: Dict[str, Any]) -> Tuple[bool, str]:
     """Validate tool call. Only enforce clearly required params (not optional)."""
     tool = get_tool_by_name(tool_name)
     if tool is None:

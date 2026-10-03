@@ -578,6 +578,12 @@ class NemesisApp:
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
+    if "--version" in args:
+        print("NEMESIS-CLI 2.0.0")
+        return 0
+    if "--help" in args or "-h" in args:
+        print("Usage: nemesis [--debug] [--version]")
+        return 0
     debug_mode = "--debug" in args
     app = NemesisApp(debug=debug_mode)
     app.run()

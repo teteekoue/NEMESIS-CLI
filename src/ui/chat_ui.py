@@ -361,12 +361,12 @@ class ChatUI:
 
     def welcome(
         self,
-        version: str | None = None,
+        version: Optional[str] = None,
         provider: str = "",
         target: str = "",
         model: str = "",
         workspace: str = "",
-        connected: bool | None = None,
+        connected: Optional[bool] = None,
     ):
         from .header import get_header
 

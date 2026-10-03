@@ -60,7 +60,7 @@ class Composer:
     DEFAULT_TITLE = "input"
     AUTH_TITLE = "authorization  [y / n / a]"
 
-    def __init__(self, version: str | None = None):
+    def __init__(self, version: Optional[str] = None):
         self.console = Console()
         self.chat = ChatUI(self.console)
         self._is_tty = sys.stdin.isatty()
@@ -193,7 +193,7 @@ class Composer:
         target: str = "",
         model: str = "",
         workspace: str = "",
-        connected: bool | None = None,
+        connected: Optional[bool] = None,
     ):
         self.chat.welcome(
             provider=provider,
