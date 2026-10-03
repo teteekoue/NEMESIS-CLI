@@ -1,23 +1,14 @@
-"""Branding and session header for the NEMESIS-CLI terminal UI."""
+"""Professional, compact session header for the NEMESIS terminal UI."""
 
-from __future__ import annotations
+from typing import Optional
 
-from rich.align import Align
+from rich import box
 from rich.console import Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from rich import box
 
 from .theme import Catppuccin
-
-
-ASCII_LOGO = r""" _   _ _____ __  __ _____ ____ ___ ____
-| \ | | ____|  \/  | ____/ ___|_ _/ ___|
-|  \| |  _| | |\/| |  _| \___ \| |\___ \
-| |\  | |___| |  | | |___ ___) | | ___) |
-|_| \_|_____|_|  |_|_____|____/___|____/
-                 NEMESIS-CLI"""
 
 
 def _value(value: object, fallback: str = "—") -> str:
@@ -26,55 +17,46 @@ def _value(value: object, fallback: str = "—") -> str:
 
 
 def get_header(
-    version: str | None = None,
+    version: Optional[str] = None,
     provider: str = "",
     target: str = "",
     model: str = "",
     workspace: str = "",
-    connected: bool | None = None,
+    connected: Optional[bool] = None,
 ):
-    """Render the product banner and the most useful session parameters.
-
-    ``version`` remains accepted for callers from older integrations but is
-    intentionally not rendered: the CLI branding must never be version-bound.
-    """
+    """Render an information-dense header without decorative ASCII art."""
     del version
-    status = "connected" if connected is True else "offline" if connected is False else "not tested"
-    status_color = (
-        Catppuccin.GREEN if connected is True
-        else Catppuccin.RED if connected is False
-        else Catppuccin.YELLOW
+    state, state_color = (
+        ("connected", Catppuccin.GREEN) if connected is True
+        else ("offline", Catppuccin.RED) if connected is False
+        else ("ready", Catppuccin.YELLOW)
     )
 
-    logo = Text(ASCII_LOGO, style=f"bold {Catppuccin.MAUVE}")
-    tagline = Text("l'agent autonome de codage", style=f"bold {Catppuccin.BLUE}")
+    title = Text()
+    title.append("NEMESIS", style=f"bold {Catppuccin.MAUVE}")
+    title.append("  controlled coding agent", style=Catppuccin.SUBTEXT0)
+    title.append("   ")
+    title.append(state, style=f"bold {state_color}")
 
-    table = Table(box=box.SIMPLE, show_header=False, expand=True, padding=(0, 1))
-    table.add_column("key", style=f"bold {Catppuccin.SUBTEXT0}", no_wrap=True)
-    table.add_column("value", style=Catppuccin.TEXT, overflow="ellipsis")
-    table.add_row("provider", _value(provider, "NEMAPI"))
-    table.add_row("model", _value(model))
-    table.add_row("endpoint", _value(target))
-    table.add_row("workspace", _value(workspace))
-    table.add_row("status", Text(status, style=f"bold {status_color}"))
+    details = Table.grid(expand=True, padding=(0, 1))
+    details.add_column(style=f"bold {Catppuccin.OVERLAY0}", no_wrap=True)
+    details.add_column(style=Catppuccin.TEXT, overflow="ellipsis")
+    details.add_column(style=f"bold {Catppuccin.OVERLAY0}", no_wrap=True)
+    details.add_column(style=Catppuccin.TEXT, overflow="ellipsis")
+    details.add_row("provider", _value(provider, "NEMAPI"), "model", _value(model))
+    details.add_row("endpoint", _value(target), "workspace", _value(workspace))
 
     hints = Text()
     hints.append("/help", style=f"bold {Catppuccin.PEACH}")
-    hints.append(" commands  ·  ", style=Catppuccin.OVERLAY0)
-    hints.append("/status", style=f"bold {Catppuccin.PEACH}")
-    hints.append(" session  ·  ", style=Catppuccin.OVERLAY0)
+    hints.append(" commands   ", style=Catppuccin.OVERLAY0)
+    hints.append("/doctor", style=f"bold {Catppuccin.PEACH}")
+    hints.append(" diagnostics   ", style=Catppuccin.OVERLAY0)
     hints.append("Ctrl+C", style=f"bold {Catppuccin.PEACH}")
     hints.append(" interrupt", style=Catppuccin.OVERLAY0)
 
-    body = Group(
-        Align.center(logo),
-        Align.center(tagline),
-        table,
-        hints,
-    )
     return Panel(
-        body,
-        border_style=Catppuccin.MAUVE,
+        Group(title, details, hints),
+        border_style=Catppuccin.SURFACE1,
         padding=(1, 2),
         box=box.ROUNDED,
     )

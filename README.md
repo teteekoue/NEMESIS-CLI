@@ -20,6 +20,7 @@ NEMESIS est un **agent IA de codage et d'administration système** qui fonctionn
 - **20+ outils** : fichiers, bash, recherche, processus, upload, recherche web
 - **Extensible** : support du **Model Context Protocol (MCP)**, skills, sous-agents
 - **Partout** : Linux (Ubuntu, Debian, Fedora) et même **Android via Termux**
+- **Python 3.9+** : compatibilité testée et distribuée à partir de Python 3.9
 - **Telegram** : pilotage complet de l'agent depuis un bot
 
 ---
@@ -195,40 +196,19 @@ Le script d'installation :
 
 ### Interface Coding-Agent Alternative
 
-`cli.py` utilise exactement le même moteur, les mêmes outils et les mêmes commandes que `agent.py`, mais avec une présentation plus adaptée au travail de développement : conversation en flux, appels d'outils séparés des résultats, sorties de commandes visibles et confirmations compactes.
+`nemesis-cli` utilise exactement le même moteur, les mêmes outils et les mêmes commandes que `nemesis`. Il fournit un point d'entrée stable, des options explicites pour le workspace et la configuration, et conserve le contexte conversationnel côté NemApi.
 
 ```bash
-./venv/bin/python3 cli.py
-# ou avec les diagnostics du moteur
-./venv/bin/python3 cli.py --debug
+# Lanceur professionnel installé avec le paquet
+./venv/bin/nemesis-cli
+
+# Diagnostics et workspace explicite
+./venv/bin/nemesis-cli --debug --workspace ~/projets/mon-app
 ```
 
-Cette interface est volontairement parallèle afin de pouvoir être évaluée sans modifier l'interface historique lancée par `agent.py`.
+### Diagnostic local
 
-L'interface expérimentale reprend les conventions d'affichage de Mistral Vibe (composer persistant, transcript compact, cartes d'outils, todo et fermeture à double `Ctrl+C`). Les primitives adaptées sont isolées dans `src/ui/vibe_style.py` et accompagnées de leur notice Apache-2.0.
-
-### Aperçu Local avec le Moteur Fictif
-
-Pour tester l'interface sans serveur NEMAPI, lancez :
-
-```bash
-python cli.py --mock
-```
-
-Le moteur fictif répond avec des appels JSON et exécute les vrais handlers de l'agent. Dans la session, répondez `n` à la question du prompt système, puis utilisez l'une de ces demandes exactes :
-
-
-| Demande à saisir          | Ce qui est affiché                                      |
-| ------------------------- | ------------------------------------------------------- |
-| `lis un fichier`          | Appel `read_file` et aperçu du résultat                 |
-| `lance une commande bash` | Appel Bash, sortie et statut de réussite                |
-| `fais une modification`   | Demande d'autorisation puis appel `write`               |
-| `montre une erreur`       | Sortie stderr et statut d'échec                         |
-| `affiche un plan`         | Carte de plan avec états pending/in\_progress/completed |
-| `teste tous les outils`   | Deux appels Bash groupés et leurs résultats             |
-
-
-Pour les scénarios Bash, écrivez `y` quand l'interface demande `Allow ... [y] once [a] always [n] deny`. Pour le scénario d'écriture, `y` autorise également la création de `mock-ui-demo.txt` dans le workspace configuré. Ce fichier peut être supprimé après le test.
+NEMESIS reste connecté à NemApi et conserve le contexte côté serveur. Lancez `/doctor` dans une session pour vérifier la configuration locale, les skills et la connectivité NemApi sans modifier le contexte courant.
 
 ---
 
@@ -486,6 +466,9 @@ NEMESIS propose des commandes spéciales préfixées par `/` :
 | `/config`  | Configure l'URL et le port du serveur NEMAPI                 |
 | `/stats`   | Affiche les statistiques de session                          |
 | `/history` | Consulte ou gère l'historique                                |
+| `/reset`   | Réinitialise explicitement le contexte conservé par NemApi   |
+| `/doctor`  | Vérifie la configuration locale et la connexion NemApi       |
+| `/workspace` | Affiche le workspace actif                                  |
 | `/agents`  | Gère les sous-agents (délégation)                            |
 | `/skills`  | Gère les compétences additionnelles                          |
 | `/clear`   | Réinitialise l'affichage du terminal                         |

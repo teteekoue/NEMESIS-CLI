@@ -4,7 +4,7 @@ This allows a gradual migration: the agent loop can use the new tool system
 while the existing provider layer stays unchanged.
 """
 
-from typing import Dict, Any, Generator
+from typing import Dict, Any, Generator, Optional
 from pathlib import Path
 from src.core.agent_tools import create_registry, build_system_prompt, build_feedback
 from src.core.tools.bash import run_bash_streamed
@@ -20,7 +20,7 @@ class ToolBridge:
         self.registry = create_registry(str(self.workspace_root))
         self._read_paths = set()
 
-    def risk_for(self, tool_name: str, parameters: Dict[str, Any] | None = None) -> str:
+    def risk_for(self, tool_name: str, parameters: Optional[Dict[str, Any]] = None) -> str:
         """Return the runtime risk class used by approval UIs."""
         risk = self.registry.risk_for(tool_name)
         if tool_name == "bash":
@@ -33,8 +33,16 @@ class ToolBridge:
                 return "high"
         return risk
 
-    def _check_paths(self, tool_name: str, parameters: Dict[str, Any]) -> str | None:
-        path_keys = ("path", "file_path", "target_file", "filename", "workdir")
+    def _check_paths(self, tool_name: str, parameters: Dict[str, Any]) -> Optional[str]:
+        """Reject every path argument that escapes the configured workspace.
+
+        This check intentionally happens before schema validation so aliases and
+        lists (notably ``read_file.paths``) cannot bypass the workspace policy.
+        """
+        path_keys = (
+            "path", "paths", "file_path", "target_file", "filename",
+            "workdir", "output_dir", "root",
+        )
         for key in path_keys:
             value = parameters.get(key)
             if not value:
@@ -47,13 +55,14 @@ class ToolBridge:
                     return f"Path outside workspace is not allowed: {raw}"
         return None
 
-    def _check_read_before_write(self, tool_name: str, parameters: Dict[str, Any]) -> str | None:
+    def _check_read_before_write(self, tool_name: str, parameters: Dict[str, Any]) -> Optional[str]:
         if tool_name not in {"edit", "delete_file"}:
             return None
         raw = parameters.get("file_path") or parameters.get("target_file") or parameters.get("path")
         if not raw:
             return None
-        path = (self.workspace_root / str(raw)).resolve()
+        candidate = Path(str(raw)).expanduser()
+        path = (candidate if candidate.is_absolute() else self.workspace_root / candidate).resolve()
         if path.exists() and str(path) not in self._read_paths:
             return f"Read the existing file with read_file before using {tool_name}: {raw}"
         return None
@@ -93,6 +102,12 @@ class ToolBridge:
                 is_bg = parameters.get("is_background", False)
                 timeout = parameters.get("timeout")
                 workdir = parameters.get("workdir", self.workspace_root)
+                workdir_path = Path(str(workdir)).expanduser()
+                workdir = str(
+                    workdir_path.resolve()
+                    if workdir_path.is_absolute()
+                    else (self.workspace_root / workdir_path).resolve()
+                )
 
                 if is_bg:
                     # Background: use normal handler (returns immediately)
@@ -105,8 +120,9 @@ class ToolBridge:
                     )
                 else:
                     # Foreground: execute and collect all output (no streaming)
-                    wd = str(workdir) if not isinstance(workdir, str) else workdir
+                    wd = str(workdir)
                     full_output = []
+                    result = {"success": False, "stdout": "Command produced no final result."}
                     for update in run_bash_streamed(cmd, wd, timeout):
                         if "partial" in update:
                             # Accumulate output but don't yield it
@@ -156,18 +172,20 @@ class ToolBridge:
                 )
             elif tool_name == "edit":
                 result = reg.handler(
-                    file_path=parameters.get("file_path", ""),
+                    file_path=parameters.get("file_path") or parameters.get("path", ""),
                     old_string=parameters.get("old_string", ""),
                     new_string=parameters.get("new_string", ""),
                     replace_all=parameters.get("replace_all", False),
                 )
             elif tool_name == "write_file":
                 result = reg.handler(
-                    file_path=parameters.get("file_path", ""),
+                    file_path=(parameters.get("file_path") or parameters.get("path")
+                               or parameters.get("filename", "")),
                     content=parameters.get("content", ""),
                 )
             elif tool_name == "delete_file":
-                result = reg.handler(target_file=parameters.get("target_file", ""))
+                result = reg.handler(target_file=(parameters.get("target_file") or parameters.get("path")
+                                                  or parameters.get("file_path", "")))
             elif tool_name == "grep":
                 result = reg.handler(
                     pattern=parameters.get("pattern", ""),

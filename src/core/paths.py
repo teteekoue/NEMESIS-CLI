@@ -50,6 +50,7 @@ def ensure_user_dirs() -> Path:
     USER_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     _seed_if_missing(CONFIG_NAME)
     _seed_if_missing(MCP_CONFIG_NAME)
+    _seed_if_missing(AGENTS_NAME)
     # tools_library: seed empty structure or copy bundled skills
     user_lib = USER_CONFIG_DIR / TOOLS_LIBRARY_NAME
     install_lib = _find_resource(TOOLS_LIBRARY_NAME)

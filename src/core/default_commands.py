@@ -227,6 +227,53 @@ def _print_session_time():
         console.print(f"[system]Duree de session : {mins:02d}:{secs:02d}[/system]")
 
 
+@registry.register("doctor", "Diagnostique la configuration locale et la connexion NemApi", "/doctor")
+def doctor_command(args=None):
+    """Provide actionable diagnostics without changing the server-side context."""
+    from src.core.paths import config_path, mcp_config_path, tools_library_path
+
+    table = Table(title="Diagnostic NEMESIS", border_style="bright_blue")
+    table.add_column("Vérification", style="cyan")
+    table.add_column("État", style="white")
+    table.add_row("Configuration", "OK — {0}".format(config_path()))
+    table.add_row("Configuration MCP", "OK — {0}".format(mcp_config_path()))
+    table.add_row("Bibliothèque de skills", "OK — {0}".format(tools_library_path()))
+    if _active_app and _active_app.client:
+        try:
+            connected = bool(_active_app.client.test_connection())
+            table.add_row("NemApi", "[green]connecté[/green]" if connected else "[red]injoignable[/red]")
+        except Exception as exc:
+            table.add_row("NemApi", "[red]erreur : {0}[/red]".format(exc))
+    else:
+        table.add_row("NemApi", "[yellow]client non initialisé[/yellow]")
+    console.print(table)
+
+
+@registry.register("workspace", "Affiche le workspace actif", "/workspace")
+def workspace_command(args=None):
+    """Keep workspace changes explicit: changing it requires a fresh session."""
+    if not _active_app:
+        console.print("[error]Application non initialisée.[/error]")
+        return
+    workspace = _active_app.config.get("security", {}).get("workspace", "—")
+    console.print(Panel(str(workspace), title="Workspace actif", border_style="bright_blue"))
+    if args:
+        console.print("[yellow]Pour changer de workspace, relancez NEMESIS avec --workspace <chemin>.[/yellow]")
+
+
+@registry.register("reset", "Réinitialise le contexte conservé par NemApi pour cette session", "/reset")
+def reset_command(args=None):
+    if not _active_app or not _active_app.client:
+        console.print("[error]Client NemApi non initialisé.[/error]")
+        return
+    try:
+        _active_app.client.reset_conversation()
+        _active_app._prompt_sent = False
+        console.print("[green]Contexte NemApi réinitialisé. Le prochain message démarre une nouvelle conversation.[/green]")
+    except Exception as exc:
+        console.print("[error]Impossible de réinitialiser le contexte : {0}[/error]".format(exc))
+
+
 @registry.register("stats", "Affiche les statistiques de la session actuelle", "/stats")
 def stats_command(args=None):
     uptime = datetime.now() - SESSION_START

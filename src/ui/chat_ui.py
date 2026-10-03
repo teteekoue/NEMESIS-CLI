@@ -220,7 +220,6 @@ class ChatUI:
             output = result.get("output") or result.get("stdout") or result.get("error") or ""
         elif hasattr(result, "output"):
             output = result.output or ""
-        detail = ""
         line = Text.assemble(
             ("  ", Catppuccin.OVERLAY0),
             ("✓ " if success else "✗ ", f"bold {color}"),
@@ -236,6 +235,21 @@ class ChatUI:
             # OSC-8 terminals can still use the standard file URI fallback.
             line.stylize(f'link "vscode://file{path}"')
         self.console.print(line)
+        if tool_name == "edit" and isinstance(result, dict) and result.get("edits"):
+            self._display_edit_diff(result, _content_width(self.console), color, status)
+            return
+        if not success:
+            error = str(output).strip()
+            if error:
+                self.console.print(
+                    Panel(
+                        Text(_truncate(error, 500), style=Catppuccin.RED),
+                        border_style=Catppuccin.RED,
+                        padding=(0, 1),
+                        width=_content_width(self.console),
+                        box=SQUARE,
+                    )
+                )
 
     def _display_edit_diff(self, result: dict, w: int, color: str, status: str):
         """Affiche un diff structuré pour l'édition."""
@@ -361,12 +375,12 @@ class ChatUI:
 
     def welcome(
         self,
-        version: str | None = None,
+        version: Optional[str] = None,
         provider: str = "",
         target: str = "",
         model: str = "",
         workspace: str = "",
-        connected: bool | None = None,
+        connected: Optional[bool] = None,
     ):
         from .header import get_header
 

@@ -1,4 +1,5 @@
 import os
+import fnmatch
 from dataclasses import dataclass
 from typing import Optional, List
 
@@ -90,6 +91,9 @@ def _walk(
         if entry.startswith(".") and entry != ".env":
             continue
         full = os.path.join(current, entry)
+        relative = os.path.relpath(full, root).replace(os.sep, "/")
+        if any(fnmatch.fnmatch(entry, pattern) or fnmatch.fnmatch(relative, pattern) for pattern in gitignore):
+            continue
         if os.path.isdir(full):
             dirs.append((entry, full))
         else:
