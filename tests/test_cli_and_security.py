@@ -18,7 +18,7 @@ def test_cli_help_is_a_stable_entrypoint(capsys):
 
 def test_cli_sets_workspace_before_agent_bootstrap(monkeypatch, tmp_path):
     received = []
-    monkeypatch.setattr("cli.run_agent", lambda argv: received.append(argv) or 0)
+    monkeypatch.setattr("agent.main", lambda argv: received.append(argv) or 0)
     assert cli_main(["--workspace", str(tmp_path), "--debug"]) == 0
     assert received == [["--debug"]]
 

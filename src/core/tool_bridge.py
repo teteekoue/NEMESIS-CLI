@@ -102,6 +102,12 @@ class ToolBridge:
                 is_bg = parameters.get("is_background", False)
                 timeout = parameters.get("timeout")
                 workdir = parameters.get("workdir", self.workspace_root)
+                workdir_path = Path(str(workdir)).expanduser()
+                workdir = str(
+                    workdir_path.resolve()
+                    if workdir_path.is_absolute()
+                    else (self.workspace_root / workdir_path).resolve()
+                )
 
                 if is_bg:
                     # Background: use normal handler (returns immediately)
@@ -114,8 +120,9 @@ class ToolBridge:
                     )
                 else:
                     # Foreground: execute and collect all output (no streaming)
-                    wd = str(workdir) if not isinstance(workdir, str) else workdir
+                    wd = str(workdir)
                     full_output = []
+                    result = {"success": False, "stdout": "Command produced no final result."}
                     for update in run_bash_streamed(cmd, wd, timeout):
                         if "partial" in update:
                             # Accumulate output but don't yield it

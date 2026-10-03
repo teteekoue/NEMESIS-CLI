@@ -13,8 +13,6 @@ import os
 from pathlib import Path
 from typing import Optional, Sequence
 
-from agent import main as run_agent
-
 VERSION = "2.0.0"
 
 
@@ -36,6 +34,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         os.environ["NEMESIS_WORKSPACE"] = str(Path(args.workspace).expanduser().resolve())
     if args.config_dir:
         os.environ["NEMESIS_CONFIG_DIR"] = str(Path(args.config_dir).expanduser().resolve())
+    # Import after environment configuration: paths.py derives its locations
+    # at import time, so importing earlier would ignore CLI options.
+    from agent import main as run_agent
     return run_agent(["--debug"] if args.debug else [])
 
 

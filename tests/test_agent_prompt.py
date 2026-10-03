@@ -39,3 +39,22 @@ def test_system_prompt_can_be_enabled():
 
     assert app._send_system_prompt is True
     assert app._prompt_sent is False
+
+
+def test_native_and_text_actions_are_deduplicated():
+    app = NemesisApp.__new__(NemesisApp)
+    action = {"type": "read_file", "content": {"path": "README.md"}}
+    merged = app._merge_actions(
+        {"action": action, "actions": [action]},
+        {"tool_calls": [{"type": "read_file", "content": {"path": "README.md"}}]},
+    )
+    assert merged == [action]
+
+
+def test_native_arguments_are_normalized_as_tool_content():
+    app = NemesisApp.__new__(NemesisApp)
+    merged = app._merge_actions(
+        {"action": None, "actions": []},
+        {"tool_call": {"name": "list_dir", "arguments": {"path": "."}}},
+    )
+    assert merged == [{"type": "list_dir", "content": {"path": "."}}]

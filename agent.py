@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import tempfile
+import json
 import yaml
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -20,6 +21,10 @@ import src.core.default_commands  # noqa: F401 — enregistre les commandes /
 from providers import create_provider
 from tools import create_executor_from_config
 from action_parser import ActionParser
+
+
+MAX_TOOL_ITERATIONS = 24
+MAX_ACTIONS_PER_TURN = 12
 
 
 class NemesisApp:
@@ -211,6 +216,47 @@ class NemesisApp:
         """
         return self.parser.parse(resp)
 
+    @staticmethod
+    def _action_key(action: Dict[str, Any]) -> str:
+        """Produce a stable identity used to remove duplicated native calls."""
+        try:
+            return json.dumps(
+                {"type": action.get("type"), "content": action.get("content", {})},
+                sort_keys=True,
+                ensure_ascii=False,
+                default=str,
+            )
+        except (TypeError, ValueError):
+            return repr(action)
+
+    def _merge_actions(self, parsed: Dict[str, Any], result: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Merge text-parsed and native calls once, preserving provider order."""
+        actions = list(parsed.get("actions") or ([] if not parsed.get("action") else [parsed["action"]]))
+        native_calls = result.get("tool_calls") or []
+        if not native_calls and isinstance(result.get("tool_call"), dict):
+            native_calls = [result["tool_call"]]
+        for native in native_calls:
+            if not isinstance(native, dict):
+                continue
+            actions.append({
+                "type": native.get("type") or native.get("name", ""),
+                "content": native.get("content", native.get("arguments", {})),
+            })
+
+        unique = []
+        seen = set()
+        for action in actions:
+            if not isinstance(action, dict) or not action.get("type"):
+                continue
+            if not isinstance(action.get("content", {}), dict):
+                action = dict(action)
+                action["content"] = {"value": action.get("content")}
+            key = self._action_key(action)
+            if key not in seen:
+                seen.add(key)
+                unique.append(action)
+        return unique
+
     def _ask_for_authorization(self, tool_name: str, action_content: Dict, risk: str = "medium") -> bool:
         """Ask the user to authorize a tool call. Returns True if allowed."""
         if risk == "read":
@@ -320,8 +366,8 @@ class NemesisApp:
         current_input = message
         current_role = "user"
         iteration = 0
-        max_tool_iterations = 50
-        last_tool_name = None
+        max_tool_iterations = MAX_TOOL_ITERATIONS
+        tool_count = 0
         last_response_hash = None
         start_time = time.time()
 
@@ -353,26 +399,13 @@ class NemesisApp:
                     pass
 
             # Le spinner s'arrête automatiquement ici
-            if not result['success']:
-                self.console.print(f"[error]Erreur: {result.get('error', 'inconnu')}[/error]")
+            if not isinstance(result, dict) or not result.get('success', False):
+                error = result.get("error", "inconnu") if isinstance(result, dict) else "réponse provider invalide"
+                self.console.print(f"[error]Erreur: {error}[/error]")
                 break
 
             raw_response = result.get('response', '')
             parsed = self._parse_response(raw_response)
-            native_calls = result.get("tool_calls") or []
-            for native_call in native_calls:
-                if isinstance(native_call, dict):
-                    parsed.setdefault("actions", []).append({
-                        "type": native_call.get("type", ""),
-                        "content": native_call.get("content", {}),
-                    })
-            native_call = result.get("tool_call")
-            if native_call and isinstance(native_call, dict) and not native_calls:
-                parsed.setdefault("actions", []).append({
-                    "type": native_call.get("type", ""),
-                    "content": native_call.get("content", {}),
-                })
-                parsed["action"] = parsed["actions"][0]
             if self.debug:
                 self.console.print(f"[debug]Reponse recue ({len(raw_response)} chars), action={parsed['action'] is not None}[/debug]")
 
@@ -390,14 +423,20 @@ class NemesisApp:
                 self.composer.display_ai_message(display_text)
 
             # --- No action = end of cycle ---
-            actions = parsed.get("actions") or ([parsed["action"]] if parsed.get("action") else [])
+            actions = self._merge_actions(parsed, result)
             if not actions:
+                break
+            if len(actions) > MAX_ACTIONS_PER_TURN:
+                self.console.print(
+                    f"[error]Réponse refusée : {len(actions)} appels d'outils demandés "
+                    f"(maximum {MAX_ACTIONS_PER_TURN} par tour).[/error]"
+                )
                 break
             batch_feedback = []
             for action in actions:
                 act_type = action['type']
                 act_content = action.get('content', {})
-                last_tool_name = act_type
+                tool_count += 1
                 risk = self.executor.risk_for(act_type, act_content) if hasattr(self.executor, "risk_for") else "medium"
                 if not self._ask_for_authorization(act_type, act_content, risk):
                     self.console.print(f"[red] Exécution de l'outil '{act_type}' refusée.[/red]")
@@ -468,7 +507,7 @@ class NemesisApp:
             self.console.print(f"[error]Limite de {max_tool_iterations} iterations d'outils atteinte. Arret du cycle.[/error]")
 
         elapsed = time.time() - start_time
-        self.composer.display_task_summary(elapsed, tool_count=iteration - 1)
+        self.composer.display_task_summary(elapsed, tool_count=tool_count)
 
     def run(self):
         self.session_start = time.time()

@@ -138,6 +138,11 @@ def create_registry(workspace_dir: str) -> ToolRegistry:
                 },
             },
             "required": ["content"],
+            "anyOf": [
+                {"required": ["file_path"]},
+                {"required": ["path"]},
+                {"required": ["filename"]},
+            ],
         },
     )
 
